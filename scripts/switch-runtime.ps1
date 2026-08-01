@@ -509,7 +509,7 @@ try {
         Write-Incident -Level 'ERROR' -Type 'switch-deps-missing' -Message "$To deps missing: $($deps.missing -join ', ')"
         Update-RuntimeState -Active 'none' -Switching $false
         Write-Host "[switch-runtime] ERROR: $To dependencies missing: $($deps.missing -join ', ')" -ForegroundColor Red
-        Write-Host "[switch-runtime] Run scripts\install-win-server.ps1 first." -ForegroundColor Yellow
+        Write-Host "[switch-runtime] Double-click install-windows-server.bat first." -ForegroundColor Yellow
         exit 4
     }
     Write-SwitchLog "  Deps ok"

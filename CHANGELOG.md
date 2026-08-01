@@ -9,7 +9,10 @@ tunnel, backup restore, or remote player connection has been verified.
 
 ## [Unreleased]
 
-No unreleased changes.
+- Added a beginner-first Windows-native onboarding path with a visible,
+  double-clickable `install-windows-server.bat` launcher.
+- Added source and execution-contract coverage for the Windows installer BAT,
+  plus clearer desktop-host first-run guidance and social-media copy.
 
 ## [0.1.1] - 2026-08-02
 
@@ -104,4 +107,4 @@ No unreleased changes.
 
 ## Release history
 
-No versioned public release has been created yet.
+The latest public release is [v0.1.1](https://github.com/Mentat-Uran/PalworldServer/releases/tag/v0.1.1).

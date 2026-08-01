@@ -59,6 +59,7 @@ jobs:
           .\scripts\test-runtime-common-behavior.ps1
           .\scripts\test-desktop-host.ps1
           .\scripts\test-desktop-installer.ps1
+          .\scripts\test-windows-installer-bat.ps1
 
       - name: Run source validation
         shell: pwsh

@@ -12,15 +12,15 @@ function Add-Error([string]$Message) { $errors.Add($Message) }
 function Add-Warning([string]$Message) { $warnings.Add($Message) }
 
 $requiredFiles = @(
-    ".env", ".env.example", "docker-compose.yml", "start-docker.bat", "start-windows.bat",
+    ".env", ".env.example", "docker-compose.yml", "start-docker.bat", "start-windows.bat", "install-windows-server.bat",
     "settings-panel.ps1", "web\index.html", "web\styles.css", "web\app.js", "package.json", "package-lock.json", "README.md", "README.en.md", "AGENTS.md",
-    "desktop\PalworldConsole.Desktop\PalworldConsole.Desktop.csproj", "desktop\PalworldConsole.Desktop\Program.cs", "desktop\PalworldConsole.Desktop\packages.lock.json", "installer\PalworldServerConsole.wxs", "docs\desktop-app.md",
+    "desktop\PalworldConsole.Desktop\PalworldConsole.Desktop.csproj", "desktop\PalworldConsole.Desktop\Program.cs", "desktop\PalworldConsole.Desktop\packages.lock.json", "installer\PalworldServerConsole.wxs", "docs\desktop-app.md", "docs\quick-start.md", "docs\social-media-copy.md",
     "CHANGELOG.md", "docs\versioning-and-releases.md", "docs\compatibility.md",
     "docs\clean-checkout-onboarding.md", "docs\maintenance-window-runbook.md",
     "docs\maintenance-evidence.synthetic.json", "scripts\test-clean-checkout.ps1",
     "scripts\test-maintenance-readiness.ps1", "scripts\verify-maintenance-evidence.ps1",
     "scripts\compare-save-integrity.ps1",
-    "scripts\settings-catalog.ps1", "scripts\ensure-win-management-firewall.ps1", "scripts\ui-smoke.cjs", "scripts\test-i18n-parity.cjs", "scripts\build-desktop-app.ps1", "scripts\test-desktop-host.ps1", "scripts\test-desktop-installer.ps1",
+    "scripts\settings-catalog.ps1", "scripts\ensure-win-management-firewall.ps1", "scripts\ui-smoke.cjs", "scripts\test-i18n-parity.cjs", "scripts\build-desktop-app.ps1", "scripts\test-desktop-host.ps1", "scripts\test-desktop-installer.ps1", "scripts\test-windows-installer-bat.ps1",
     "scripts\test-player-command-picker.cjs", "scripts\test-console-guided-actions.cjs", "scripts\test-compare-save-integrity.cjs", "scripts\test-runtime-orchestration-contract.ps1", "scripts\test-runtime-common-behavior.ps1",
     "scripts\daily-log-collector.ps1", "scripts\player-session-times.ps1", "scripts\test-player-session-times.ps1",
     "scripts\audit-public-release.ps1", "scripts\test-host-prerequisites.ps1", "scripts\test-web-console-boundary.ps1",
@@ -108,7 +108,7 @@ if (Test-Path -LiteralPath $envPath -PathType Leaf) {
 
 foreach ($relativeScript in @("settings-panel.ps1", "scripts\settings-catalog.ps1",
     "scripts\normalize-env.ps1", "scripts\mod-manager.ps1", "scripts\daily-log-collector.ps1", "scripts\player-session-times.ps1", "scripts\start-web-console.ps1", "scripts\test-player-session-times.ps1", "scripts\test-runtime-orchestration-contract.ps1", "scripts\test-runtime-common-behavior.ps1",
-    "scripts\audit-public-release.ps1", "scripts\test-host-prerequisites.ps1", "scripts\test-web-console-boundary.ps1", "scripts\build-desktop-app.ps1", "scripts\test-desktop-host.ps1", "scripts\test-desktop-installer.ps1",
+    "scripts\audit-public-release.ps1", "scripts\test-host-prerequisites.ps1", "scripts\test-web-console-boundary.ps1", "scripts\build-desktop-app.ps1", "scripts\test-desktop-host.ps1", "scripts\test-desktop-installer.ps1", "scripts\test-windows-installer-bat.ps1",
     "scripts\runtime-common.ps1", "scripts\docker-runtime.ps1", "scripts\compile-settings.ps1",
     "scripts\win-runtime.ps1", "scripts\install-win-server.ps1",
     "scripts\switch-runtime.ps1", "scripts\restore-snapshot.ps1",
@@ -372,7 +372,8 @@ if ($node) {
         if ($ciWorkflow -notmatch [regex]::Escape('node scripts/test-player-command-picker.cjs') -or
             $ciWorkflow -notmatch [regex]::Escape('node scripts/test-console-guided-actions.cjs') -or
             $ciWorkflow -notmatch [regex]::Escape('node scripts/test-compare-save-integrity.cjs') -or
-            $ciWorkflow -notmatch [regex]::Escape('.\scripts\test-desktop-installer.ps1')) {
+            $ciWorkflow -notmatch [regex]::Escape('.\scripts\test-desktop-installer.ps1') -or
+            $ciWorkflow -notmatch [regex]::Escape('.\scripts\test-windows-installer-bat.ps1')) {
             Add-Error 'Windows CI must run the player-command-picker, guided-action, and save-integrity source contracts.'
         }
     }
@@ -454,6 +455,19 @@ if (Test-Path -LiteralPath $desktopInstallerTest -PathType Leaf) {
         }
     } catch {
         Add-Error "Desktop installer source contract failed: $($_.Exception.Message)"
+    }
+}
+
+$windowsInstallerBatTest = Join-Path $projectDir 'scripts\test-windows-installer-bat.ps1'
+if (Test-Path -LiteralPath $windowsInstallerBatTest -PathType Leaf) {
+    try {
+        $LASTEXITCODE = 0
+        & $windowsInstallerBatTest
+        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            Add-Error "Windows installer BAT contract failed with exit code $LASTEXITCODE."
+        }
+    } catch {
+        Add-Error "Windows installer BAT contract failed: $($_.Exception.Message)"
     }
 }
 

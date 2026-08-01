@@ -403,7 +403,7 @@ function Start-WindowsRuntime {
 
     # 3. Check PalServer.exe
     if (-not (Test-Path -LiteralPath $palServerExe -PathType Leaf)) {
-        return @{ ok = $false; error = "PalServer.exe not found at: $palServerExe (run install-win-server.ps1 first)" }
+        return @{ ok = $false; error = "PalServer.exe not found at: $palServerExe (double-click install-windows-server.bat first)" }
     }
 
     # 4. Check INI

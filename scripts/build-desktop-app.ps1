@@ -5,7 +5,7 @@ param(
     [ValidateSet('win-x64')]
     [string]$RuntimeIdentifier = 'win-x64',
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '0.1.0',
+    [string]$Version = '0.1.1',
     [switch]$SelfContained,
     [switch]$Zip,
     [switch]$Msi

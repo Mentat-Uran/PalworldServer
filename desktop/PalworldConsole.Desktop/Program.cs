@@ -20,6 +20,15 @@ internal sealed class ConsoleHostForm : Form
 {
     private const int StartupTimeoutSeconds = 30;
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(2);
+    private const string WelcomeMessage =
+        "欢迎使用 Palworld Server Console。\r\n\r\n" +
+        "第一次使用请按这个顺序：\r\n" +
+        "1. 准备 PalworldServer 项目文件夹；\r\n" +
+        "2. 确认里面有 .env、settings-panel.ps1、docker-compose.yml 和 web\\index.html；\r\n" +
+        "3. 如果还没有 Windows 原生服务端，先双击项目根目录的 install-windows-server.bat；首次下载约 5 GB，需要等待；\r\n" +
+        "4. 点击窗口左上角“选择服务器目录…”。\r\n\r\n" +
+        "选择后，应用会连接或启动本机 Web Console。Docker 与 Windows 原生服务端不能同时运行。" +
+        "本应用只提供控制台，不包含 Palworld 游戏文件或世界存档。";
 
     private readonly string[] _arguments;
     private readonly HttpClient _httpClient = new() { Timeout = ProbeTimeout };
@@ -83,7 +92,7 @@ internal sealed class ConsoleHostForm : Form
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         if (!IsProjectRoot(dialog.SelectedPath))
         {
-            ShowMessage("所选目录不是 PalworldServer 项目目录。需要 settings-panel.ps1、docker-compose.yml、web/index.html 与 .env。", error: true);
+            ShowMessage("这不是有效的 PalworldServer 项目文件夹。\r\n\r\n请选择同时包含以下文件的目录：\r\n.env\r\nsettings-panel.ps1\r\ndocker-compose.yml\r\nweb\\index.html\r\n\r\n如果没有 .env，请先复制 .env.example 为 .env，并设置至少 16 位的 ADMIN_PASSWORD。", error: true);
             return;
         }
         _projectRoot = Path.GetFullPath(dialog.SelectedPath);
@@ -98,7 +107,7 @@ internal sealed class ConsoleHostForm : Form
         _projectRoot = ResolveProjectRoot(_arguments) ?? LoadSavedProjectRoot() ?? _projectRoot;
         if (!IsProjectRoot(_projectRoot))
         {
-            ShowMessage("请选择 PalworldServer 项目目录，然后桌面应用会启动或连接本地 Web Console。", error: false);
+            ShowMessage(WelcomeMessage, error: false);
             if (requireSelection) await ChooseProjectAsync();
             return;
         }
@@ -119,7 +128,7 @@ internal sealed class ConsoleHostForm : Form
         }
         catch (Exception error)
         {
-            ShowMessage($"无法打开本地 Web Console。{Environment.NewLine}{Environment.NewLine}{error.Message}{Environment.NewLine}{Environment.NewLine}请确认项目目录和 .env 有效；此应用不会绕过运行时切换、保存或权限检查。", error: true);
+            ShowMessage($"无法打开本地 Web Console。{Environment.NewLine}{Environment.NewLine}{error.Message}{Environment.NewLine}{Environment.NewLine}请按顺序检查：{Environment.NewLine}1. 项目目录中有 .env 且管理员密码已填写；{Environment.NewLine}2. Docker Desktop 已运行，或 Windows 原生服务端已经安装；{Environment.NewLine}3. 没有同时启动 Docker 和 Windows 原生服务端。{Environment.NewLine}{Environment.NewLine}应用不会绕过运行时切换、保存或权限检查。", error: true);
         }
     }
 

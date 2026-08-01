@@ -66,7 +66,7 @@ if ($Runtime -eq 'docker') {
 } else {
     $palServer = Join-Path $projectDir 'win-server\PalServer.exe'
     if (-not (Test-Path -LiteralPath $palServer -PathType Leaf)) {
-        Add-HostError 'Windows dedicated server is not installed. Run scripts\\install-win-server.ps1 first.'
+        Add-HostError 'Windows dedicated server is not installed. Double-click install-windows-server.bat first.'
     }
 }
 
