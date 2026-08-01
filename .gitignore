@@ -29,6 +29,6 @@ _*.cjs
 _*.txt
 _*.json
 
-# This public repository intentionally does not use GitHub Actions.
 .github/workflows/
+!.github/workflows/brief-ci.yml
 .github/dependabot.yml
