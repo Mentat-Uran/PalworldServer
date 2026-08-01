@@ -13,7 +13,7 @@ not a claim that every listed combination has received a live-server test.
 | Palworld dedicated server | Exact locally tested build: `v1.0.2.101103` | Docker and Windows native runtime both reported this version in the 2026-07-31 local regression. This is not a promise that later Palworld builds are compatible. Back up and review before every update. |
 | Docker image | `thijsvanloef/palworld-server-docker@sha256:401d3eb5c053bcd72949e1ede8c4e38be5e5ad66be7272ac37940706df0aeb2f` only | Digest-pinned selected deployment; changing it requires a documented compatibility review and backup. |
 | Node.js | 22.x for CI; 22–24 for local tooling | CI uses Node 22. The optional browser smoke locks `playwright-core` in `package-lock.json`, installs it with `npm ci`, and connects to an installed local Chrome. |
-| Windows desktop host | Windows 11 x64; .NET 8 or self-contained x64 publish; Evergreen WebView2 Runtime | The host embeds only the local Web Console and uses its protected APIs for Docker/Windows controls. It does not add a remote listener or independently start a game runtime. |
+| Windows desktop host | Windows 11 x64; .NET 8 or self-contained x64 publish; Evergreen WebView2 Runtime | The host embeds only the local Web Console and uses its protected APIs for Docker/Windows controls. It does not add a remote listener or independently start a game runtime. Portable ZIP and current-user MSI packaging are source-supported; the MSI does not bundle WebView2. |
 
 ## Explicitly unsupported or unqualified
 

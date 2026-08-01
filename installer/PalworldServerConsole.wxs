@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="Palworld Server Console"
+    Manufacturer="Mentat-Uran"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="{4A2D04C2-4F69-4E59-8EEB-0B9F4E0A8D6B}"
+    Scope="perUser"
+    InstallerVersion="500"
+    Compressed="yes">
+    <SummaryInformation Description="Local Palworld Server Console desktop host" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Palworld Server Console is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="PalworldServerConsole" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="APPLICATIONPROGRAMSFOLDER" Name="Palworld Server Console" />
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="Palworld Server Console" Level="1">
+      <ComponentGroupRef Id="ApplicationComponents" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="ApplicationExecutable" Guid="*">
+        <File
+          Id="PalworldServerConsoleExe"
+          Source="$(var.PublishDir)\PalworldServerConsole.exe"
+          KeyPath="yes">
+          <Shortcut
+            Id="PalworldServerConsoleStartMenuShortcut"
+            Directory="APPLICATIONPROGRAMSFOLDER"
+            Name="Palworld Server Console"
+            WorkingDirectory="INSTALLFOLDER"
+            Advertise="no" />
+        </File>
+        <RegistryValue
+          Root="HKCU"
+          Key="Software\PalworldServerConsole"
+          Name="Installed"
+          Type="integer"
+          Value="1"
+          KeyPath="no" />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="APPLICATIONPROGRAMSFOLDER" On="uninstall" />
+      </Component>
+    </DirectoryRef>
+
+    <ComponentGroup Id="ApplicationComponents" Directory="INSTALLFOLDER">
+      <ComponentRef Id="ApplicationExecutable" />
+    </ComponentGroup>
+  </Fragment>
+</Wix>

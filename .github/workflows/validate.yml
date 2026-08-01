@@ -1,0 +1,85 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-validation:
+    name: Static validation (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Create CI-only configuration
+        shell: pwsh
+        run: |
+          Copy-Item .env.example .env
+          $content = Get-Content -LiteralPath .env -Raw
+          $content = $content.Replace('ADMIN_PASSWORD=CHANGE_ME_WITH_A_LONG_RANDOM_PASSWORD', 'ADMIN_PASSWORD=ci-only-not-a-real-secret-2026')
+          Set-Content -LiteralPath .env -Value $content -NoNewline -Encoding utf8
+
+      - name: Install browser-smoke dependency without lifecycle scripts
+        shell: pwsh
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node -e "require.resolve('playwright-core'); console.log('PLAYWRIGHT_CORE=resolved')"
+
+      - name: Run player-session regression under Windows PowerShell 5.1
+        shell: powershell
+        run: .\scripts\test-player-session-times.ps1
+
+      - name: Run source contracts
+        shell: pwsh
+        run: |
+          node --check web/app.js
+          node --check scripts/ui-smoke.cjs
+          node scripts/test-i18n-parity.cjs
+          node scripts/test-player-command-picker.cjs
+          node scripts/test-console-guided-actions.cjs
+          node scripts/test-compare-save-integrity.cjs
+          .\scripts\test-player-session-times.ps1
+          .\scripts\test-runtime-orchestration-contract.ps1
+          .\scripts\test-runtime-common-behavior.ps1
+          .\scripts\test-desktop-host.ps1
+          .\scripts\test-desktop-installer.ps1
+
+      - name: Run source validation
+        shell: pwsh
+        run: .\scripts\verify-project.ps1 -SkipDocker
+
+  desktop-host-build:
+    name: Desktop host compile (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore locked desktop host
+        shell: pwsh
+        run: dotnet restore .\desktop\PalworldConsole.Desktop\PalworldConsole.Desktop.csproj --locked-mode
+
+      - name: Compile desktop host without a server runtime
+        shell: pwsh
+        run: dotnet build .\desktop\PalworldConsole.Desktop\PalworldConsole.Desktop.csproj --configuration Release --no-restore

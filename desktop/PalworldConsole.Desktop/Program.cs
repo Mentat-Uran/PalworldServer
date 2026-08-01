@@ -171,7 +171,11 @@ internal sealed class ConsoleHostForm : Form
             var candidate = new UriBuilder(Uri.UriSchemeHttp, "localhost", port, "/").Uri;
             try
             {
-                using var response = await _httpClient.GetAsync(new Uri(candidate, "api/dashboard"));
+                // Dashboard construction may wait on Docker, REST, and tunnel
+                // telemetry. The runtime endpoint is a bounded, read-only
+                // readiness probe and is the same endpoint used by the local
+                // launcher.
+                using var response = await _httpClient.GetAsync(new Uri(candidate, "api/runtime"));
                 if (response.StatusCode == HttpStatusCode.OK) return candidate;
             }
             catch (HttpRequestException) { }

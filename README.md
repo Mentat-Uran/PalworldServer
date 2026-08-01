@@ -10,9 +10,11 @@ The project is an operations and safety toolkit, not an official Pocketpair prod
 - Runtime switching with state checks, mutex protection, snapshots, and restore-oriented diagnostics.
 - A Web Console bound to loopback by default.
 - Configuration validation, backups, log archiving, player-session aggregation, and maintenance-readiness checks.
-- Optional desktop host source for the local Web Console.
+- Optional Windows desktop host for the local Web Console, distributed as both a self-contained portable ZIP and a current-user MSI installer.
 
 The repository documents source-level behavior and local validation boundaries. A clean checkout or passing static check does not prove Internet reachability, multiplayer stability, disaster recovery, tunnel availability, or production acceptance.
+
+English guide: [English](README.en.md).
 
 ## Quick start
 
@@ -27,6 +29,8 @@ The repository documents source-level behavior and local validation boundaries. 
 4. Start the selected runtime with `start-docker.bat` or `start-windows.bat` during an approved maintenance window.
 
 Read [`docs/clean-checkout-onboarding.md`](docs/clean-checkout-onboarding.md), [`docs/compatibility.md`](docs/compatibility.md), and [`docs/maintenance-window-runbook.md`](docs/maintenance-window-runbook.md) before operating a real server.
+
+To build the desktop packages locally, run `.\scripts\test-desktop-host.ps1`, `.\scripts\test-desktop-installer.ps1`, and `.\scripts\build-desktop-app.ps1 -SelfContained -Msi -Zip -Version 0.1.0`. The ZIP is portable; the MSI installs the desktop host under the current user's local application directory and adds a Start menu shortcut. Both require the Evergreen WebView2 Runtime.
 
 ## Safety and privacy
 

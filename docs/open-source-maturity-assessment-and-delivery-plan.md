@@ -12,7 +12,7 @@ remote connection has been verified.
 | Safe operational model | Established | Docker and Windows runtime exclusivity, backups, localhost-only management, and fail-closed Mod rules are documented and implemented. A zero-player bidirectional Full-snapshot drill passed; this is not a substitute for P2 maintenance-window acceptance. |
 | Static quality gate | Established | `scripts/verify-project.ps1` parses PowerShell and JavaScript, validates the settings catalog, compose contract, Mod manifest, runtime state, and generated-INI consistency. It now follows the split `web/index.html` / `web/styles.css` / `web/app.js` structure. |
 | Browser regression | Partial | `scripts/ui-smoke.cjs` covers live-panel behavior. `package-lock.json` pins its no-browser `playwright-core` dependency and the smoke uses an installed Chrome with a fresh loopback DevTools handshake. A Windows-native loopback pass validated runtime-aware update/CPU semantics, both language directions, settings, logs, RCON and narrow layout; it still requires a running local Web Console and is intentionally not treated as a static CI pass. |
-| Windows desktop host | Established baseline | A locked .NET 8 WinForms/WebView2 project publishes a self-contained x64 executable and timestamped ZIP. It embeds only the existing loopback Web Console, has no direct Docker, PalServer, REST, or RCON control path, and preserves the backend's existing safeguards. Zero-player launches against active Docker and Windows each kept the panel API and runtime healthy. This is not installer, signing, remote-access, or multiplayer acceptance. |
+| Windows desktop host | Established | A locked .NET 8 WinForms/WebView2 project publishes a self-contained x64 executable, portable ZIP, and current-user MSI with Start menu and upgrade/uninstall behavior. It embeds only the existing loopback Web Console, has no direct Docker, PalServer, REST, or RCON control path, and preserves the backend's existing safeguards. The artifacts are unsigned; this is not remote-access or multiplayer acceptance. |
 | Continuous integration | Established for source validation | GitHub Actions runs `npm ci --ignore-scripts` from the checked-in lock, resolves the no-browser library, then creates a CI-only `.env` and runs static validation plus the disposable player-session accounting regression on Windows PowerShell 5.1 and PowerShell 7, without Docker, a browser, or a live server. It cannot prove runtime behavior. |
 | Contributor and vulnerability process | Established baseline | `CONTRIBUTING.md` and `SECURITY.md` define data handling, validation, maintenance-window, and private-reporting expectations. |
 | Release governance | Established for first-release preparation | Changelog, versioning/release checklist, collaboration templates, compatibility contract, and clean-onboarding test are present. No public tag, signed artifact, or runtime acceptance is claimed. |
@@ -65,13 +65,14 @@ Delivered in this increment:
   Console now registers only loopback URL prefixes and rejects non-loopback
   requests before routing any API call.
 - Add the locked `PalworldServerConsole` WinForms/WebView2 desktop host and its
-  x64 self-contained packaging script. It discovers or starts only the existing
-  local panel and leaves game-runtime actions to the protected backend.
+  x64 self-contained ZIP/MSI packaging script. It discovers or starts only the
+  existing local panel and leaves game-runtime actions to the protected backend.
 
 Acceptance: source-only checks pass on the disposable workspace and the tracked
 source passes the publication audit. The first public tag, executable signing,
-installer packaging, artifact hashes, hosting-account configuration, and all P2
-runtime evidence remain separate work.
+hosting-account configuration, and all P2 runtime evidence remain separate
+work. The MSI/ZIP package and SHA-256 sidecars are now part of the source release
+build, but code signing and clean-machine installation evidence remain separate.
 
 ### P2 — operational confidence
 

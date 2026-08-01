@@ -27,23 +27,33 @@ NuGet registry for the first restore.
 
 ```powershell
 .\scripts\test-desktop-host.ps1
-.\scripts\build-desktop-app.ps1 -SelfContained -Zip
+.\scripts\test-desktop-installer.ps1
+.\scripts\build-desktop-app.ps1 -SelfContained -Msi -Zip -Version 0.1.0
 ```
 
 The published application is written under `output\desktop-app\`; output is
 local and ignored by Git. `-SelfContained` packages the .NET runtime for the
-selected Windows architecture. `-Zip` creates a timestamped archive without
-replacing an earlier package.
+selected Windows architecture. `-Zip` creates a versioned portable archive.
+`-Msi` creates a current-user Windows Installer package and implies
+`-SelfContained`; the build script bootstraps the pinned WiX CLI 5.0.2 into the
+ignored `output\wix\` directory when necessary. SHA-256 sidecars are emitted
+for each artifact.
 
-The ZIP is a portable package, not an installer. It is currently unsigned; a
-public release must add code signing, a published SHA-256, release notes, and a
-fresh clean-machine install check before it is presented as a trusted download.
+The portable ZIP runs from its extracted directory and leaves no installer
+registration behind. The MSI installs the single-file host under the current
+user's local application data directory, adds a Start menu shortcut, supports
+normal major-version upgrades, and can be removed from Windows Apps or with
+Windows Installer. Neither package installs a WebView2 Runtime.
+
+The artifacts are currently unsigned. A public release should publish the
+generated SHA-256 sidecars and state that code signing is not configured; do not
+present the package as signed provenance.
 
 Run the resulting executable with an explicit project root when it is installed
 outside the repository:
 
 ```powershell
-& 'C:\path\to\PalworldServerConsole.exe' --project-root '<project-root>'
+& 'C:\path\to\PalworldServerConsole.exe' --project-root 'C:\Services\PalworldServer'
 ```
 
 On first launch without this argument, select the project folder containing

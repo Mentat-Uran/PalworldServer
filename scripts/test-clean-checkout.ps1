@@ -90,10 +90,15 @@ try {
         foreach ($relativeTest in @(
             'scripts\test-player-command-picker.cjs',
             'scripts\test-console-guided-actions.cjs',
-            'scripts\test-compare-save-integrity.cjs'
+            'scripts\test-compare-save-integrity.cjs',
+            'scripts\test-desktop-installer.ps1'
         )) {
             $testPath = Join-Path $workspace $relativeTest
-            & $node.Source $testPath
+            if ([System.IO.Path]::GetExtension($testPath) -eq '.ps1') {
+                & (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoProfile -ExecutionPolicy Bypass -File $testPath
+            } else {
+                & $node.Source $testPath
+            }
             if ($LASTEXITCODE -ne 0) {
                 throw "Clean-checkout source contract failed: $relativeTest (exit $LASTEXITCODE)."
             }

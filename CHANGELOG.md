@@ -9,6 +9,23 @@ tunnel, backup restore, or remote player connection has been verified.
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [0.1.1] - 2026-08-02
+
+### Fixed
+
+- Explicitly pin the desktop host's private `Microsoft.NET.ILLink.Tasks` build
+  dependency to 8.0.28 so locked restore is stable across current .NET SDK
+  patch versions.
+- Replace the player-session test's Windows-only `System.Web.Extensions` JSON
+  dependency with the built-in PowerShell JSON cmdlets, keeping the same
+  privacy-preserving data shape in Windows PowerShell 5.1 and PowerShell 7.
+- Run the player-session regression explicitly in both supported Windows
+  PowerShell hosts in CI.
+
+## [0.1.0] - 2026-08-02
+
 ### Added
 
 - Source-only Windows CI validation using a generated, non-secret `.env`.
@@ -24,6 +41,9 @@ tunnel, backup restore, or remote player connection has been verified.
 - A source-only Chinese/English Web Console dictionary parity check.
 - Source-contract checks for player-ID command insertion and goal-first Web
   Console actions, runnable without a browser or live game server.
+- Self-contained Windows desktop delivery in both portable ZIP and current-user
+  MSI forms, with Start menu integration, major-version upgrade support, and
+  SHA-256 sidecars.
 
 ### Changed
 
@@ -79,6 +99,8 @@ tunnel, backup restore, or remote player connection has been verified.
   prepare announcements, route through the active Docker or Windows runtime,
   insert in-memory selected player IDs without writing them to markup, and
   confirms kick, ban, unban, shutdown, and exit commands before dispatch.
+- The desktop host now uses the bounded `/api/runtime` readiness endpoint rather
+  than waiting on the slower dashboard telemetry endpoint.
 
 ## Release history
 
