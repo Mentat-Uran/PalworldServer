@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PALWORLD // SERVER CONSOLE</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app">
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-text">PALWORLD <span>// SERVER CONSOLE</span></div>
+    </div>
+    <div class="topbar-sep"></div>
+    <div class="status-pill" id="statusPill">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText" data-i18n="status.connecting">连接中…</span>
+    </div>
+    <div class="topbar-sep"></div>
+    <div class="runtime-pill" id="runtimePill" title="当前运行时" data-i18n-title="accessibility.runtimePill" role="status" aria-live="polite">
+      <span class="runtime-pill-label" data-i18n="runtime.pill.label">运行时:</span>
+      <span class="runtime-pill-value" id="runtimePillValue">—</span>
+      <span class="runtime-pill-switching" id="runtimePillSwitching" hidden data-i18n="runtime.pill.switching">切换中</span>
+    </div>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-meta">
+      <span><b data-i18n="meta.uptime">运行时长</b> <span id="metaUptime">—</span></span>
+      <span><b data-i18n="meta.port">端口</b> <span id="metaPort">8211/UDP</span></span>
+      <span id="metaTime">—</span>
+    </div>
+    <div class="topbar-sep"></div>
+    <button class="lang-toggle" id="langToggle" title="切换语言" aria-label="切换语言" data-i18n-title="accessibility.languageToggle" data-i18n-aria-label="accessibility.languageToggle">
+      <span class="lang-label" id="langLabel">中</span>
+    </button>
+    <button class="theme-toggle" id="themeToggle" title="切换主题" aria-label="切换主题" data-i18n-title="accessibility.themeToggle" data-i18n-aria-label="accessibility.themeToggle">
+      <svg class="theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      <svg class="theme-icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </header>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="nav-section" data-i18n="nav.section">控制台</div>
+    <div class="nav-item active" data-panel="overview">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      <span data-i18n="nav.overview">概览</span>
+    </div>
+    <div class="nav-item" data-panel="settings">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span data-i18n="nav.settings">设置</span>
+    </div>
+    <div class="nav-item" data-panel="logs">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      <span data-i18n="nav.logs">日志</span>
+    </div>
+    <div class="nav-item" data-panel="rcon">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      <span>RCON</span>
+    </div>
+    <div class="nav-item" data-panel="backup">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span data-i18n="nav.backup">备份</span>
+    </div>
+    <div class="nav-item" data-panel="mods">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 3H5a2 2 0 0 0-2 2v3.5a2.5 2.5 0 1 1 0 5V19a2 2 0 0 0 2 2h5.5a2.5 2.5 0 1 1 5 0H19a2 2 0 0 0 2-2v-5.5a2.5 2.5 0 1 1 0-5V5a2 2 0 0 0-2-2h-5.5a2.5 2.5 0 1 1-5 0z"/></svg>
+      <span data-i18n="nav.mods">Mod 管理</span>
+    </div>
+    <div class="nav-item" data-panel="runtime">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9"/><path d="M21 3v6h-6"/><path d="M3 12h2"/><path d="M12 21v-2"/></svg>
+      <span data-i18n="nav.runtime">运行时切换</span>
+    </div>
+
+    <div class="sidebar-footer">
+      v1.0 // <span id="panelAddressLabel">localhost:8213</span><br>
+      <span data-i18n="footer.title">Palworld 服务器控制台</span>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <!-- Overview Panel -->
+    <section class="panel active" id="panel-overview">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title"><span>01</span><span data-i18n="panel.overview">概览</span></div>
+          <div class="panel-subtitle" data-i18n="panel.overview.desc">实时服务器状态与引导操作</div>
+        </div>
+      </div>
+
+      <div class="overview-identity">
+        <div>
+          <div class="server-identity-name" id="serverIdentityName">Palworld Server</div>
+          <div class="server-identity-meta" id="serverIdentityMeta">version — · world —</div>
+        </div>
+        <div class="freshness" id="dashboardFreshness" aria-live="polite">正在读取完整状态…</div>
+      </div>
+
+      <div class="warning-rail" id="dashboardWarnings" role="status" aria-live="polite"></div>
+
+      <div class="stat-grid" id="statGrid">
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="stat.players">在线玩家</div>
+          <div class="stat-value"><span id="statPlayers">—</span><span class="unit">/ <span id="statMaxPlayers">8</span></span></div>
+          <div class="stat-bar"><div class="stat-bar-fill" id="statPlayersBar" style="width: 0%"></div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">SERVER FPS</div>
+          <div class="stat-value"><span id="statFps">—</span><span class="unit">FPS</span></div>
+          <div class="stat-detail"><span id="statFpsAverage">avg —</span> · <span id="statFrameTime">—</span><span class="unit" style="margin-left:2px">ms</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="stat.cpu">CPU 占用</div>
+          <div class="resource-stat-body">
+            <div class="resource-stat-main">
+              <div class="stat-value"><span id="statCpu">—</span><span class="unit">%</span></div>
+              <div class="stat-bar"><div class="stat-bar-fill" id="statCpuBar" style="width: 0%"></div></div>
+              <div class="stat-detail" id="statCpuCapacity">容量：600%（6 核）</div>
+            </div>
+            <div class="resource-ring" id="statCpuRing" role="img" aria-label="CPU 配额占用 0%">
+              <span class="resource-ring-value" id="statCpuRingValue">0%</span>
+            </div>
+          </div>
+        </div>
+        <div class="stat-card memory-stat-card">
+          <div class="stat-label" data-i18n="stat.memory">内存</div>
+          <div class="resource-stat-body">
+            <div class="resource-stat-main">
+              <div class="stat-value"><span id="statMem">—</span><span class="unit">/ <span id="statMemLimit">8192</span> MB</span></div>
+              <div class="stat-bar"><div class="stat-bar-fill memory" id="statMemBar" style="width: 0%"></div></div>
+              <div class="stat-detail" id="statMemCapacity">已用 0% · 容量 8 GiB</div>
+            </div>
+            <div class="resource-ring memory" id="statMemRing" role="img" aria-label="内存配额占用 0%">
+              <span class="resource-ring-value" id="statMemRingValue">0%</span>
+            </div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="stat.status">运行时状态</div>
+          <div class="stat-value" style="font-size: 22px; text-transform: uppercase;" id="statStatus">—</div>
+          <div class="stat-detail" id="statHealth">health: —</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">SERVER UPTIME</div>
+          <div class="stat-value" style="font-size: 23px;" id="statServerUptime">—</div>
+          <div class="stat-detail" id="statStartedAt">started —</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="stat.worldDay">世界天数</div>
+          <div class="stat-value"><span id="statWorldDay">—</span></div>
+          <div class="stat-detail" id="statWorldDayDetail">world day —</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">BASE CAMPS</div>
+          <div class="stat-value"><span id="statBaseCamps">—</span></div>
+          <div class="stat-detail" id="statBaseCampsDetail">base camps —</div>
+        </div>
+      </div>
+
+      <div class="resource-charts-row">
+        <div class="resource-chart-section">
+          <div class="fps-chart-header">
+            <div class="fps-chart-title" id="fpsChartTitle" data-i18n="chart.fps.title">FPS 趋势</div>
+            <div class="fps-chart-legend">
+              <span class="fps-legend-current"></span><span id="fpsLegendCurrent">—</span>
+              <span class="fps-legend-avg"></span><span id="fpsLegendAvg">—</span>
+            </div>
+          </div>
+          <canvas id="fpsChart" width="800" height="120" aria-label="FPS trend chart"></canvas>
+        </div>
+        <div class="resource-chart-section">
+          <div class="fps-chart-header">
+            <div class="fps-chart-title" id="cpuChartTitle" data-i18n="chart.cpu.title">CPU 趋势</div>
+            <div class="fps-chart-legend">
+              <span class="cpu-legend"></span><span id="cpuLegendCurrent">—</span>
+              <span class="cpu-legend-avg"></span><span id="cpuLegendAvg">—</span>
+            </div>
+          </div>
+          <canvas id="cpuChart" width="800" height="120" aria-label="CPU usage trend chart"></canvas>
+        </div>
+        <div class="resource-chart-section">
+          <div class="fps-chart-header">
+            <div class="fps-chart-title" id="memChartTitle" data-i18n="chart.mem.title">内存趋势</div>
+            <div class="fps-chart-legend">
+              <span class="mem-legend"></span><span id="memLegendCurrent">—</span>
+              <span class="mem-legend-avg"></span><span id="memLegendAvg">—</span>
+            </div>
+          </div>
+          <canvas id="memChart" width="800" height="120" aria-label="Memory usage trend chart"></canvas>
+        </div>
+      </div>
+
+      <div class="actions-row">
+        <button class="btn primary" id="btnRestart">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          <span data-i18n="btn.restart">重启服务</span>
+        </button>
+        <button class="btn" id="btnSave">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          <span data-i18n="btn.save">保存世界</span>
+        </button>
+        <button class="btn" id="btnBackupNow">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span data-i18n="btn.backup">立即备份</span>
+        </button>
+        <button class="btn danger" id="btnStop">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"/></svg>
+          <span data-i18n="btn.stop">停止</span>
+        </button>
+      </div>
+
+      <section class="operator-guide dashboard-card" aria-labelledby="operatorGuideTitle">
+        <div class="dashboard-card-head">
+          <div>
+            <div class="dashboard-card-title" id="operatorGuideTitle" data-i18n="guide.title">从这里开始</div>
+            <p class="operator-guide-desc" data-i18n="guide.desc">不了解指令也可以完成日常管理。选择目标后，面板会说明接下来会发生什么。</p>
+          </div>
+        </div>
+        <div class="operator-guide-grid">
+          <button type="button" class="operator-guide-action safe" data-guide-action="save">
+            <span class="operator-guide-action-title" data-i18n="guide.save.title">保存世界</span>
+            <span class="operator-guide-action-desc" data-i18n="guide.save.desc">立即请求当前服务保存；不会停止服务。</span>
+          </button>
+          <button type="button" class="operator-guide-action safe" data-guide-action="backup">
+            <span class="operator-guide-action-title" data-i18n="guide.backup.title">创建备份</span>
+            <span class="operator-guide-action-desc" data-i18n="guide.backup.desc">先保存，再由当前运行时创建本地归档。</span>
+          </button>
+          <button type="button" class="operator-guide-action" data-guide-action="players">
+            <span class="operator-guide-action-title" data-i18n="guide.players.title">查看或管理玩家</span>
+            <span class="operator-guide-action-desc" data-i18n="guide.players.desc">查看实时玩家表；需要管理时点选 ID 填入指令。</span>
+          </button>
+          <button type="button" class="operator-guide-action" data-guide-action="tunnel">
+            <span class="operator-guide-action-title" data-i18n="guide.tunnel.title">检查好友能否加入</span>
+            <span class="operator-guide-action-desc" data-i18n="guide.tunnel.desc">重新读取隧道证据；“已启动”不等于好友已能进入。</span>
+          </button>
+          <button type="button" class="operator-guide-action" data-guide-action="logs">
+            <span class="operator-guide-action-title" data-i18n="guide.logs.title">排查问题</span>
+            <span class="operator-guide-action-desc" data-i18n="guide.logs.desc">打开带解释和建议的日志，而不是直接阅读原始输出。</span>
+          </button>
+        </div>
+        <p class="operator-guide-order" data-i18n="guide.order">建议顺序：保存世界 → 创建备份 → 再进行停服、重启或切换。</p>
+      </section>
+
+      <div class="player-times-card dashboard-card" id="playerTimesCard">
+        <div class="dashboard-card-head">
+          <div class="dashboard-card-title" id="playerTimesTitle">玩家在线时长</div>
+          <div class="player-times-head-meta">
+            <span class="player-times-updated" id="playerTimesUpdated"></span>
+            <button class="btn compact" id="btnRefreshPlayerTimes" style="padding: 4px 10px; font-size: 13px;">刷新</button>
+          </div>
+        </div>
+        <div class="player-table-wrap" id="playerTimesWrap">
+          <div class="empty-state">暂无玩家记录</div>
+        </div>
+      </div>
+
+      <div class="dashboard-grid">
+        <div class="dashboard-card">
+          <div class="dashboard-card-head">
+            <div class="dashboard-card-title" id="playersTableTitle">在线玩家详情</div>
+            <label class="filter-toggle">
+              <input type="checkbox" id="privacyToggle" checked>
+              <span id="privacyToggleLabel">隐藏敏感标识</span>
+            </label>
+          </div>
+          <div class="player-table-wrap" id="playerTableWrap">
+            <div class="empty-state">当前没有在线玩家</div>
+          </div>
+        </div>
+        <div class="dashboard-stack">
+          <div class="dashboard-card">
+            <div class="dashboard-card-head">
+              <div class="dashboard-card-title" id="serviceTitle">服务与端口</div>
+              <button class="btn compact" id="btnCheckTunnel">验证隧道</button>
+            </div>
+            <div class="dashboard-card-body service-list" id="serviceList"></div>
+            <div class="tunnel-proof warn" id="tunnelProof">
+              <div class="tunnel-proof-head">
+                <div class="tunnel-proof-title" id="tunnelProofTitle">隧道证据链</div>
+                <div class="tunnel-proof-endpoint" id="tunnelEndpoint">—</div>
+              </div>
+              <div class="proof-bar" id="tunnelProofBar" aria-hidden="true"></div>
+              <div class="proof-steps" id="tunnelProofSteps"></div>
+              <div class="tunnel-last-error" id="tunnelLastError"></div>
+              <div class="tunnel-timeline" id="tunnelTimeline" style="display:none;">
+                <div class="tunnel-timeline-title">
+                  <span id="tunnelTimelineTitle">异常时间轴</span>
+                  <span id="tunnelTimelineCount" style="font-weight:400;color:var(--text-faint);"></span>
+                </div>
+                <div class="tunnel-timeline-track" id="tunnelTimelineTrack"></div>
+              </div>
+            </div>
+          </div>
+          <div class="dashboard-card">
+            <div class="dashboard-card-head">
+              <div class="dashboard-card-title" data-i18n="update.title">游戏更新</div>
+            </div>
+            <div class="dashboard-card-body update-status" id="updateStatus" aria-live="polite">
+              <div class="empty-state" data-i18n="common.loading">加载中…</div>
+            </div>
+          </div>
+          <div class="dashboard-card">
+            <div class="dashboard-card-head"><div class="dashboard-card-title" id="runtimeTitle">运行与存储</div></div>
+            <div class="dashboard-card-body runtime-list" id="runtimeList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mini-log">
+        <div class="mini-log-header">
+          <div class="mini-log-title" data-i18n="log.recent">最近活动</div>
+          <button class="btn" style="padding: 4px 10px; font-size: 13px;" id="btnRefreshLogs" data-i18n="btn.refresh">刷新</button>
+        </div>
+        <div class="mini-log-body" id="miniLog" data-i18n="common.loading">加载中…</div>
+      </div>
+    </section>
+
+    <!-- Settings Panel -->
+    <section class="panel" id="panel-settings">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title"><span>02</span><span data-i18n="panel.settings">设置</span></div>
+          <div class="panel-subtitle" data-i18n="panel.settings.desc">编辑 .env 值。保存后写入文件并重启当前服务。</div>
+        </div>
+      </div>
+
+      <div class="settings-summary" id="settingsSummary" aria-live="polite">
+        <span class="summary-chip" data-i18n="settings.catalogLoading">正在载入镜像能力清单…</span>
+      </div>
+
+      <div class="settings-toolbar">
+        <input type="search" class="search-input" id="searchInput" data-i18n-placeholder="settings.search.placeholder" placeholder="搜索名称、变量或说明…" autocomplete="off">
+        <select class="settings-select" id="groupFilter" aria-label="设置分组" data-i18n-aria-label="settings.groupFilter"></select>
+        <label class="filter-toggle"><input type="checkbox" id="modifiedOnly"> <span id="modifiedOnlyLabel">只看已修改</span></label>
+        <label class="filter-toggle"><input type="checkbox" id="showAdvanced"> <span id="showAdvancedLabel">显示高级项</span></label>
+        <button class="btn" id="btnCollapseAll" data-i18n="settings.collapseAll" style="padding: 4px 10px; font-size: 13px;">全部折叠</button>
+        <button class="btn" id="btnExpandAll" data-i18n="settings.expandAll" style="padding: 4px 10px; font-size: 13px;">全部展开</button>
+        <button class="btn" id="btnResetSettings" data-i18n="btn.reset">重置</button>
+      </div>
+
+      <div class="settings-notice" id="settingsNotice" data-i18n="settings.notice">
+        保存只写入已修改字段；密码和 Webhook 为只写项，不会从后端回显。应用修改会重启当前服务，在线玩家会断开。
+      </div>
+      <div class="settings-grid" id="settingsGrid" data-i18n="common.loading">加载中…</div>
+      <div class="save-dock" id="saveDock" role="status" aria-live="polite">
+        <div class="save-dock-text"><strong id="modifiedCount">0</strong> <span id="modifiedCountLabel">项修改等待应用</span></div>
+        <button class="btn" id="btnResetDock" data-i18n="settings.undo">撤销</button>
+        <button class="btn primary" id="btnSaveSettings" data-i18n="btn.saveRestart">保存并重启</button>
+      </div>
+    </section>
+
+    <!-- Logs Panel -->
+    <section class="panel" id="panel-logs">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title"><span>03</span><span data-i18n="panel.logs">日志</span></div>
+          <div class="panel-subtitle" data-i18n="panel.logs.desc">当前服务日志（最近 300 行）</div>
+        </div>
+      </div>
+
+      <div class="log-toolbar">
+        <button class="btn" id="btnRefreshLogsFull" data-i18n="btn.refresh">刷新</button>
+        <label class="filter-toggle">
+          <input type="checkbox" id="autoScroll" checked> <span data-i18n="logs.autoscroll">自动滚动</span>
+        </label>
+        <label class="filter-toggle">
+          <input type="checkbox" id="autoRefresh"> <span data-i18n="logs.autorefresh">自动刷新（5秒）</span>
+        </label>
+        <label class="filter-toggle">
+          <input type="checkbox" id="smartLogs" checked> <span data-i18n="logs.smart">智能解释</span>
+        </label>
+      </div>
+
+      <div class="log-summary" id="logSummary">
+        <div class="log-summary-card critical"><div class="label" data-i18n="logs.summary.critical">严重</div><div class="value" id="logCriticalCount">0</div></div>
+        <div class="log-summary-card error"><div class="label" data-i18n="logs.summary.error">错误</div><div class="value" id="logErrorCount">0</div></div>
+        <div class="log-summary-card warning"><div class="label" data-i18n="logs.summary.warning">警告</div><div class="value" id="logWarningCount">0</div></div>
+        <div class="log-summary-card"><div class="label" data-i18n="logs.summary.recorded">本次新记录</div><div class="value" id="logRecordedCount">0</div></div>
+      </div>
+      <div class="log-workspace">
+        <div class="log-container">
+          <div class="log-body" id="logBody" data-i18n="common.loading">加载中…</div>
+        </div>
+        <aside class="incident-panel">
+          <div class="incident-panel-head">
+            <div class="incident-panel-title" data-i18n="logs.incidents">异常记录</div>
+            <div class="incident-panel-note" data-i18n="logs.incidents.note">错误自动去重写入 data/diagnostics/incidents.jsonl</div>
+          </div>
+          <div class="incident-list" id="incidentList" data-i18n="common.loading">加载中…</div>
+        </aside>
+      </div>
+      <section class="archive-panel" aria-labelledby="archivePanelTitle">
+        <div class="archive-panel-head">
+          <div>
+            <div class="archive-panel-title" id="archivePanelTitle" data-i18n="logs.archive.title">每日日志归档</div>
+            <div class="archive-panel-note" id="archivePanelNote" data-i18n="logs.archive.initialNote">北京时间 00:00–24:00，汇总游戏、面板、隧道与异常记录；永久保留。</div>
+          </div>
+          <button class="btn" id="btnRefreshArchives" data-i18n="logs.archive.refresh">立即归档今天</button>
+        </div>
+        <div class="archive-list" id="logArchiveList">
+          <div class="empty-state" data-i18n="common.loading">加载中…</div>
+        </div>
+      </section>
+    </section>
+
+    <!-- RCON Panel -->
+    <section class="panel" id="panel-rcon">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title"><span>04</span>RCON</div>
+          <div class="panel-subtitle" data-i18n="panel.rcon.desc">兼容性 RCON 终端，仅本机访问；常用保存操作已优先使用 REST。</div>
+        </div>
+      </div>
+
+      <div class="rcon-layout">
+        <div class="rcon-terminal">
+          <div class="rcon-output" id="rconOutput">
+            <div class="rcon-line out" data-i18n="rcon.ready">RCON 控制台就绪。输入命令或从右侧选择。</div>
+          </div>
+          <div class="rcon-input-row">
+            <input type="text" class="rcon-input" id="rconInput" data-i18n-placeholder="rcon.input.placeholder" placeholder="例如 showplayers" autocomplete="off">
+            <button class="btn primary" id="btnRconSend" data-i18n="btn.send">发送</button>
+          </div>
+        </div>
+
+        <div class="rcon-cmds">
+          <section class="rcon-guide" aria-labelledby="rconGuideTitle">
+            <h4 id="rconGuideTitle" data-i18n="rcon.guide.title">按目标操作</h4>
+            <p class="rcon-guide-desc" data-i18n="rcon.guide.desc">不需要记住指令。先选择任务，再检查输入框，最后由你决定是否发送。</p>
+            <div class="rcon-guide-actions">
+              <button type="button" class="rcon-guide-action" id="btnRconGuidePlayers">
+                <span data-i18n="rcon.guide.players">查看在线玩家</span>
+                <small data-i18n="rcon.guide.players.desc">回到概览读取实时玩家表；管理玩家时可点选 ID。</small>
+              </button>
+              <button type="button" class="rcon-guide-action" id="btnRconGuideInfo">
+                <span data-i18n="rcon.guide.info">读取服务器信息</span>
+                <small data-i18n="rcon.guide.info.desc">填入只读 info 指令。</small>
+              </button>
+            </div>
+            <label class="rcon-broadcast-builder">
+              <span data-i18n="rcon.broadcast.label">公告内容</span>
+              <input type="text" id="rconBroadcastMessage" data-i18n-placeholder="rcon.broadcast.placeholder" placeholder="例如：10 分钟后维护，请安全下线" maxlength="400" autocomplete="off">
+              <button type="button" class="btn" id="btnRconPrepareBroadcast" data-i18n="rcon.broadcast.prepare">填入公告指令</button>
+            </label>
+            <p class="rcon-guide-safety" data-i18n="rcon.guide.playerHelp">玩家管理：先在概览选择“填入指令”，再回到此处确认并发送。封禁、踢出和停服均会二次确认。</p>
+          </section>
+          <h4 data-i18n="rcon.quickcmds">快捷命令</h4>
+          <p class="rcon-doc-note"><span data-i18n="rcon.doc.before">单击只会填入命令，不会立即执行。命令依据 </span><a href="https://docs.palworldgame.com/settings-and-operation/commands/" target="_blank" rel="noreferrer" data-i18n="rcon.doc.link">Palworld 官方命令表</a><span data-i18n="rcon.doc.after">。</span></p>
+          <div class="rcon-cmd-list" id="rconCmdList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Backup Panel -->
+    <section class="panel" id="panel-backup">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title"><span>05</span><span data-i18n="panel.backup">备份</span></div>
+          <div class="panel-subtitle" data-i18n="panel.backup.desc">手动与定时备份。存储于 data/backups/</div>
+        </div>
+      </div>
+
+      <div class="backup-grid">
+        <div class="backup-card">
+          <h3 data-i18n="backup.trigger">触发备份</h3>
+          <p style="font-size: 15px; color: var(--text-dim); margin-bottom: 14px;" data-i18n="backup.trigger.desc">
+            当前运行时会先保存世界，再创建本地备份归档。耗时取决于世界大小。
+          </p>
+          <button class="btn primary" id="btnBackupPanel">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span data-i18n="btn.backup">立即备份</span>
+          </button>
+        </div>
+
+        <div class="backup-card">
+          <h3 data-i18n="backup.existing">现有备份</h3>
+          <div class="backup-list" id="backupList" data-i18n="common.loading">加载中…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Mod Manager Panel -->
+    <section class="panel" id="panel-mods">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title"><span>06</span><span data-i18n="panel.mods">Mod 管理</span></div>
+          <div class="panel-subtitle" data-i18n="panel.mods.desc">面向未来 Windows 服务端的受控 Workshop 管理层；当前不安装任何 Mod。</div>
+        </div>
+      </div>
+
+      <div class="mod-guard" id="modGuard">
+        <div class="mod-guard-code" id="modGuardCode">FAIL CLOSED</div>
+        <div class="mod-guard-copy">
+          <h3 id="modGuardTitle" data-i18n="mods.guard.title">兼容性锁已启用</h3>
+          <p id="modGuardReason" data-i18n="mods.guard.loading">正在核对运行时与空清单…</p>
+        </div>
+        <div class="mod-state-badge" id="modStateBadge" aria-live="polite" data-i18n="common.loading">加载中</div>
+      </div>
+
+      <div class="mod-metrics">
+        <div class="mod-metric">
+          <div class="label" data-i18n="mods.metric.manager">管理器</div>
+          <div class="value" id="modMetricManager">—</div>
+        </div>
+        <div class="mod-metric">
+          <div class="label" data-i18n="mods.metric.runtime">运行时</div>
+          <div class="value" id="modMetricRuntime">—</div>
+        </div>
+        <div class="mod-metric">
+          <div class="label" data-i18n="mods.metric.configured">已配置</div>
+          <div class="value" id="modMetricConfigured">—</div>
+        </div>
+        <div class="mod-metric">
+          <div class="label" data-i18n="mods.metric.updates">待更新</div>
+          <div class="value" id="modMetricUpdates">—</div>
+        </div>
+      </div>
+
+      <div class="mod-layout">
+        <article class="mod-card">
+          <h3 data-i18n="mods.workflow.title">预留工作流</h3>
+          <p data-i18n="mods.workflow.body">从 Steam Workshop 本地源读取 Info.json，校验服务端规则与 SHA-256，经人工批准后同步；不会自动下载未知代码。</p>
+          <span class="mod-path">mods\manifest.json → data\Mods\Workshop</span>
+          <div class="mod-actions">
+            <button class="btn" id="btnModCheck" data-i18n="mods.btn.check">检查清单</button>
+            <button class="btn primary" id="btnModSync" disabled data-i18n="mods.btn.sync">同步已批准 Mod</button>
+          </div>
+        </article>
+
+        <article class="mod-card">
+          <h3 data-i18n="mods.list.title">清单</h3>
+          <div class="mod-list" id="modList" aria-live="polite">
+            <div class="mod-empty" data-i18n="common.loading">加载中…</div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Runtime Panel -->
+    <section class="panel" id="panel-runtime">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title"><span>07</span><span data-i18n="panel.runtime">运行时切换</span></div>
+          <div class="panel-subtitle" data-i18n="panel.runtime.desc">Docker 与 Windows 原生服务端互斥切换；切换前自动创建快照。</div>
+        </div>
+        <div class="panel-actions">
+          <button class="btn" id="btnRefreshRuntime" data-i18n="btn.refresh">刷新</button>
+        </div>
+      </div>
+
+      <div class="warning-rail" id="runtimeWarnings" role="status" aria-live="polite"></div>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="runtime.active">当前运行时</div>
+          <div class="stat-value"><span id="runtimeActive">—</span></div>
+          <div class="stat-detail" id="runtimeVersion">version —</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="runtime.pid">进程 PID</div>
+          <div class="stat-value"><span id="runtimePid">—</span></div>
+          <div class="stat-detail" id="runtimeStartedAt">started —</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="runtime.snapshots">切换快照</div>
+          <div class="stat-value"><span id="runtimeSnapCount">—</span></div>
+          <div class="stat-detail" id="runtimeSnapSize">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="runtime.iniCompile">INI 编译</div>
+          <div class="stat-value"><span id="runtimeIniStatus">—</span></div>
+          <div class="stat-detail" id="runtimeIniLastRun">last —</div>
+        </div>
+      </div>
+
+      <div class="action-row" style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+        <button class="btn primary" id="btnSwitchDocker" data-i18n="runtime.btn.docker">切换到 Docker</button>
+        <button class="btn primary" id="btnSwitchWindows" data-i18n="runtime.btn.windows">切换到 Windows</button>
+        <label class="filter-toggle">
+          <input type="checkbox" id="chkFullSnapshot">
+          <span data-i18n="runtime.fullSnapshot">切换前创建完整快照</span>
+        </label>
+        <span style="flex: 1"></span>
+        <button class="btn" id="btnSnapLight" data-i18n="runtime.btn.snapLight">手动 Light 快照</button>
+        <button class="btn" id="btnSnapFull" data-i18n="runtime.btn.snapFull">手动 Full 快照</button>
+      </div>
+      <div class="runtime-switch-hint" id="runtimeSwitchHint" role="status" aria-live="polite"></div>
+
+      <div class="runtime-task-bar" id="runtimeTaskBar" hidden>
+        <span class="task-spinner" aria-hidden="true" style="width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; display: inline-block; animation: spin 0.9s linear infinite;"></span>
+        <div style="flex: 1;">
+          <div id="runtimeTaskTitle" style="font-weight: 600;">—</div>
+          <div id="runtimeTaskDetail" style="font-size: 12px; opacity: 0.75;">—</div>
+        </div>
+        <span id="runtimeTaskStatus" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border);">running</span>
+      </div>
+
+      <article class="mod-card" style="margin-top: 18px;">
+        <h3 data-i18n="runtime.junction.title">Junction 状态</h3>
+        <div id="runtimeJunction" class="mod-list" aria-live="polite">
+          <div class="mod-empty" data-i18n="common.loading">加载中…</div>
+        </div>
+      </article>
+
+      <article class="mod-card" style="margin-top: 18px;">
+        <h3 data-i18n="runtime.snapshots.title">快照清单</h3>
+        <div id="runtimeSnapshotList" class="mod-list" aria-live="polite">
+          <div class="mod-empty" data-i18n="common.loading">加载中…</div>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <!-- Mobile bottom tab bar (shown on narrow screens) -->
+  <nav class="mobile-tabbar" id="mobileTabbar" aria-label="移动端面板导航" data-i18n-aria-label="accessibility.mobileNav"></nav>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Modal -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <h3 id="modalTitle">确认</h3>
+    <p id="modalBody">确定吗？</p>
+    <div class="modal-actions">
+      <button class="btn" id="modalCancel" data-i18n="common.cancel">取消</button>
+      <button class="btn primary" id="modalConfirm" data-i18n="common.confirm">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text" id="loadingText" data-i18n="toast.loading">处理中…</div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

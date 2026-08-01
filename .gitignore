@@ -1,0 +1,33 @@
+# Secrets and machine-local runtime data
+.env
+.settings-panel.pid
+.settings-panel.port
+.daily-log-collector.pid
+docker-compose.override.yml
+data/
+backups/
+
+# Local diagnostic output
+*.log
+*.tmp
+output/
+node_modules/
+.playwright-cli/
+
+# Windows desktop host build output
+desktop/PalworldConsole.Desktop/bin/
+desktop/PalworldConsole.Desktop/obj/
+
+# SteamCMD and Windows server installs (multi-GB binaries, not source)
+steamcmd/
+win-server/
+
+# Local ad-hoc scratch scripts
+_*.ps1
+_*.js
+_*.cjs
+_*.txt
+_*.json
+
+# This public repository intentionally does not use GitHub Actions.
+.github/workflows/

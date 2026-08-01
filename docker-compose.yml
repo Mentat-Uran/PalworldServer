@@ -1,0 +1,26 @@
+services:
+  palworld-server:
+    # Pinned from the locally verified 2026-07-23 image. Update intentionally;
+    # do not silently follow a mutable latest tag.
+    image: thijsvanloef/palworld-server-docker@sha256:401d3eb5c053bcd72949e1ede8c4e38be5e5ad66be7272ac37940706df0aeb2f
+    container_name: palworld-server
+    restart: unless-stopped
+    stop_grace_period: 2m
+    ports:
+      - target: ${PORT:-8211}        # 游戏端口 UDP
+        published: ${PORT:-8211}
+        protocol: udp
+      - target: ${RCON_PORT:-25575}  # RCON 端口 TCP
+        published: ${RCON_PORT:-25575}
+        host_ip: 127.0.0.1   # 仅本机；绝不通过 SakuraFrp 暴露
+        protocol: tcp
+    env_file:
+      - .env
+    volumes:
+      - ./data:/palworld/
+    memswap_limit: 12G       # memory(8G) + swap(4G) 总和
+    deploy:
+      resources:
+        limits:
+          cpus: '6'
+          memory: 8G

@@ -1,0 +1,1 @@
+{"$schema":"./manifest.schema.json","schemaVersion":1,"managerEnabled":false,"runtime":"windows-dedicated","sourceRoot":"D:\\SteamLibrary\\steamapps\\workshop\\content\\1623730","workshopRoot":"data\\Mods\\Workshop","settingsPath":"data\\Mods\\PalModSettings.ini","statePath":"data\\mod-manager\\state.json","backupRoot":"data\\mod-manager\\backups","mods":[]}

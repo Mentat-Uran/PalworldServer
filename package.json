@@ -1,0 +1,19 @@
+{
+  "name": "palworld-server-console-tools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local development and browser-regression tools for the Palworld Server Console.",
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "scripts": {
+    "test:i18n": "node scripts/test-i18n-parity.cjs",
+    "test:console-guided-actions": "node scripts/test-console-guided-actions.cjs",
+    "test:player-command-picker": "node scripts/test-player-command-picker.cjs",
+    "test:compare-save-integrity": "node scripts/test-compare-save-integrity.cjs",
+    "test:ui": "node scripts/ui-smoke.cjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.61.1"
+  }
+}

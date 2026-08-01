@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "synthetic": true,
+  "operation": "switch",
+  "performedAt": "2026-01-01T00:00:00+08:00",
+  "result": "pass",
+  "operatorApproval": "synthetic-test-only",
+  "sourceCommit": "0123456789abcdef",
+  "sensitiveDataIncluded": false,
+  "runtime": { "before": "docker", "after": "windows" },
+  "versions": {
+    "containerImageDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "gameServerBuild": "synthetic-build"
+  },
+  "dataScope": { "kind": "disposable-copy", "description": "Synthetic fixture only; not a game world." },
+  "passCriteria": ["Synthetic validator coverage only."],
+  "recovery": { "path": "Synthetic fixture; no recovery action.", "outcome": "not-applicable" },
+  "preSwitchRestSave": { "status": "success" },
+  "preSwitchSnapshot": {
+    "name": "synthetic.tar.gz",
+    "sha256": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+    "verified": true
+  },
+  "targetRestInfo": { "status": "success" },
+  "targetSettings": { "status": "success" },
+  "saveGames": {
+    "beforeFingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "afterFingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}

@@ -1,0 +1,13 @@
+# Optional machine-local resource override.
+# Copy this file to docker-compose.override.yml, adjust for your host, and do
+# not commit the copy. The example follows Pocketpair's 16 GiB server-memory
+# baseline; a lower cap is an explicitly unqualified local trade-off. Apply it
+# only in an approved maintenance window because Compose changes recreate the
+# server container.
+services:
+  palworld-server:
+    deploy:
+      resources:
+        limits:
+          cpus: '6'
+          memory: 16G

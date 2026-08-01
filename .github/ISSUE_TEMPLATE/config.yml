@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: ../../SECURITY.md
+    about: Do not disclose credentials, player data, or reachable management endpoints in public.
+  - name: Self-hosting support
+    url: ../../SUPPORT.md
+    about: Read the safe support boundary and prerequisite checks before filing an issue.
