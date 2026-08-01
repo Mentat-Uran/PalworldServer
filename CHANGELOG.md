@@ -9,10 +9,18 @@ tunnel, backup restore, or remote player connection has been verified.
 
 ## [Unreleased]
 
-- Added a beginner-first Windows-native onboarding path with a visible,
+No unreleased changes.
+
+## [0.1.2] - 2026-08-02
+
+### Added
+
+- A beginner-first Windows-native onboarding path with a visible,
   double-clickable `install-windows-server.bat` launcher.
-- Added source and execution-contract coverage for the Windows installer BAT,
-  plus clearer desktop-host first-run guidance and social-media copy.
+- Source and execution-contract coverage for the Windows installer BAT,
+  including clean-checkout validation and CI coverage.
+- Clearer desktop-host first-run guidance, quick-start documentation, and
+  social-media copy covering MSI versus portable ZIP.
 
 ## [0.1.1] - 2026-08-02
 
