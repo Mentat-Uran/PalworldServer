@@ -31,3 +31,4 @@ _*.json
 
 # This public repository intentionally does not use GitHub Actions.
 .github/workflows/
+.github/dependabot.yml
