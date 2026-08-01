@@ -31,5 +31,4 @@ Use the project’s PowerShell and Node checks from a clean or disposable copy w
 
 - Inspect `git status`, the current branch, and the diff before staging.
 - Never commit `.env`, `data/`, backups, logs, runtime markers, installed server files, generated output, credentials, or private player/server information.
-- This public repository intentionally contains no GitHub Actions workflows. Do not add workflow files or rely on hosted automation.
 - Keep commits focused and document what was actually validated.

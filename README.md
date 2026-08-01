@@ -36,10 +36,6 @@ Read [`docs/clean-checkout-onboarding.md`](docs/clean-checkout-onboarding.md), [
 - Treat snapshots and historical logs as evidence of files or past events, not as proof of a successful recovery or current external connectivity.
 - Do not include passwords, webhook URLs, tunnel credentials, player identifiers, or private server addresses in issues or pull requests.
 
-## GitHub Actions
-
-This repository intentionally contains no GitHub Actions workflows. Validation is local and explicit; hosted automation is not part of the project’s operating model.
-
 ## Contributing
 
 Read [`AGENTS.md`](AGENTS.md), [`CONTRIBUTING.md`](CONTRIBUTING.md), [`SECURITY.md`](SECURITY.md), and the relevant runbook before changing runtime behavior. Prefer read-only checks, preserve the current runtime identity, and report evidence boundaries honestly.
