@@ -1,0 +1,33 @@
+name: Brief CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches-ignore: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  brief:
+    name: brief
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check JavaScript syntax
+        shell: pwsh
+        run: |
+          node --check web/app.js
+          node --check scripts/ui-smoke.cjs
+
+      - name: Check translation parity
+        run: node scripts/test-i18n-parity.cjs

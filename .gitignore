@@ -30,5 +30,6 @@ _*.txt
 _*.json
 
 .github/workflows/
+!.github/workflows/
 !.github/workflows/brief-ci.yml
 .github/dependabot.yml
