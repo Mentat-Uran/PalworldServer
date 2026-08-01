@@ -68,7 +68,7 @@
 
 当前项目存在两个明确偏差：
 
-1. 使用 Windows Docker Desktop + WSL2，并把 `<project-root>\data` 挂载到容器 `/palworld`。
+1. 使用 Windows Docker Desktop + WSL2，并把 `C:\Services\PalworldServer\data` 挂载到容器 `/palworld`。
 2. 使用固定摘要的社区镜像 `thijsvanloef/palworld-server-docker`，不是 Pocketpair 官方镜像。
 
 这两个差异属于已知并接受的项目决策，不代表当前部署错误，也不触发主动迁移。当前方案继续使用 NVMe 存储、双层备份、优雅停服、镜像摘要固定和健康检查控制风险。只有出现下列触发条件时，才转向官方方案进行迁移评估：
@@ -150,7 +150,7 @@ Windows 原生入口为 `PalServer.exe`，Linux 原生入口为 `PalServer.sh`�
 本项目容器运行 Linux 服务端，实际配置位于：
 
 ```text
-<project-root>\data\Pal\Saved\Config\LinuxServer\PalWorldSettings.ini
+C:\Services\PalworldServer\data\Pal\Saved\Config\LinuxServer\PalWorldSettings.ini
 ```
 
 项目通过社区镜像的 `.env` 生成该文件。每次改动后必须检查生成后的 INI 或 REST `settings`，不能只根据 `.env` 认定配置已生效。

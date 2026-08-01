@@ -44,7 +44,7 @@
 ### 1.2 目标目录结构
 
 ```text
-<project-root>\
+C:\Services\PalworldServer\
 ├── data\
 │   ├── Pal\Saved\
 │   │   ├── Config\
@@ -222,7 +222,7 @@ Windows 原生服务端通过 SteamCMD 更新时可能：
 物理存档固定在：
 
 ```text
-<project-root>\data\Pal\Saved\SaveGames\
+C:\Services\PalworldServer\data\Pal\Saved\SaveGames\
 ```
 
 Docker 容器直接通过 bind mount 看到该路径（容器内 `/palworld/Pal/Saved/SaveGames/`），无需额外 junction。
@@ -230,7 +230,7 @@ Docker 容器直接通过 bind mount 看到该路径（容器内 `/palworld/Pal/
 Windows 服务端需要 junction：
 
 ```text
-<project-root>\win-server\Pal\Saved\SaveGames  ←─ junction ─→  <project-root>\data\Pal\Saved\SaveGames
+C:\Services\PalworldServer\win-server\Pal\Saved\SaveGames  ←─ junction ─→  C:\Services\PalworldServer\data\Pal\Saved\SaveGames
 ```
 
 #### 3.1.2 Junction 创建与修复
@@ -239,8 +239,8 @@ Windows 服务端需要 junction：
 
 ```powershell
 function Assert-SaveGamesJunction {
-    $target = '<project-root>\data\Pal\Saved\SaveGames'
-    $link   = '<project-root>\win-server\Pal\Saved\SaveGames'
+    $target = 'C:\Services\PalworldServer\data\Pal\Saved\SaveGames'
+    $link   = 'C:\Services\PalworldServer\win-server\Pal\Saved\SaveGames'
 
     # 1. 确保物理存档目录存在
     if (-not (Test-Path $target)) {
@@ -400,10 +400,10 @@ install-win-server.ps1 [-Force]
      - 若存在且 -Force 未指定：校验版本并退出
      - 若存在且 -Force：备份当前 win-server\Pal\Saved\Config\，删除 win-server\
   2. 下载 SteamCMD：https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip
-  3. 解压到 <project-root>\steamcmd\
+  3. 解压到 C:\Services\PalworldServer\steamcmd\
   4. 运行 steamcmd\steamcmd.exe：
        login anonymous
-       force_install_dir <project-root>\win-server
+       force_install_dir C:\Services\PalworldServer\win-server
        app_update 2394010 validate
        quit
   5. 等待下载完成（Palworld dedicated server 约 5 GB）
@@ -1281,7 +1281,7 @@ function Update-RuntimeState {
 
 ## 14. 开放问题（实施前需确认）
 
-1. **SteamCMD 安装路径**：默认 `<project-root>\steamcmd\` 与 `win-server\`，是否需要可配置？
+1. **SteamCMD 安装路径**：默认 `C:\Services\PalworldServer\steamcmd\` 与 `win-server\`，是否需要可配置？
 2. **Windows 防火墙规则命名**：建议 `Palworld Block REST 8212 Public` / `Palworld Block RCON 25575 Public`，是否与现有命名约定一致？
 3. **Mod 默认 `managerEnabled`**：Docker active 时设 false，Windows active 时设 true。是否需要在 manifest.json 中保留 `userOverride` 字段，允许用户强制禁用？
 4. **快照保留策略默认值**：Full 3 份 + 1GB / Light 10 份。是否需要 Web Console 设置页提供调整入口？

@@ -9,7 +9,8 @@ It is not an official Pocketpair product. Palworld, Pocketpair, community images
 - Docker Compose and Windows-native startup paths.
 - Protected runtime switching, state checks, snapshots, and restore-oriented diagnostics.
 - Local Web Console, configuration validation, backups, log archiving, and maintenance checks.
-- Optional desktop host source for the local console.
+- Optional Windows desktop host for the local console, distributed as a
+  self-contained portable ZIP and a current-user MSI installer.
 
 ## Quick start
 
@@ -25,7 +26,15 @@ Never commit `.env`, saves, backups, logs, runtime markers, installed binaries, 
 
 ## GitHub Actions
 
-This repository intentionally contains no GitHub Actions workflows. Validation is local and explicit.
+GitHub Actions runs source-only Windows validation on pushes to `main`, pull
+requests, and manual dispatch. It does not start Docker, PalServer, a tunnel,
+or a live Web Console. The same checks can be run locally with
+`scripts\verify-project.ps1 -SkipDocker`.
+
+The desktop host is released in two forms: a self-contained ZIP that runs from
+the directory where it is extracted, and a current-user MSI that installs to a
+local application directory and creates a Start menu shortcut. Build both with
+`scripts\build-desktop-app.ps1 -SelfContained -Msi -Zip -Version 0.1.0`.
 
 ## License
 

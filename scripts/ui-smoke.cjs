@@ -25,6 +25,7 @@ const panelPort = fs.existsSync(panelPortPath)
   ? Number(fs.readFileSync(panelPortPath, 'utf8').trim())
   : 8213;
 const panelUrl = `http://localhost:${panelPort}/`;
+const allowUnhealthyEnvironment = process.env.PALWORLD_UI_SMOKE_ALLOW_UNHEALTHY === '1';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -159,11 +160,19 @@ async function shutdownBrowser() {
     throw new Error(`Dashboard did not refresh: ${freshness}. Responses: ${dashboardResponses.join(',') || 'none'}. Page: ${JSON.stringify(pageState)}. Browser: ${browserErrors.join(' | ') || 'none'}`);
   }
   assert((await page.locator('#serverIdentityName').innerText()).includes('Palworld'), 'Server identity did not load.');
-  assert((await page.locator('#statHealth').innerText()).includes('healthy'), 'Container health was not rendered.');
+  const healthText = await page.locator('#statHealth').innerText();
+  if (!healthText.includes('healthy') && !allowUnhealthyEnvironment) {
+    throw new Error(`Container health was not rendered: ${healthText}. Set PALWORLD_UI_SMOKE_ALLOW_UNHEALTHY=1 only for a source/UI check without a running game runtime.`);
+  }
+  if (!healthText.includes('healthy')) {
+    console.log(`UI_ENVIRONMENT_WARNING=health=${healthText}`);
+  }
   assert(await page.locator('#serviceList .service-row').count() >= 7, 'Service status rows are incomplete.');
   let serviceStatusText = await page.locator('#serviceList').innerText();
-  assert(serviceStatusText.includes('每日日志') && serviceStatusText.includes('运行中'),
-    'Daily log collector status is missing from the dashboard.');
+  assert(serviceStatusText.includes('每日日志'), 'Daily log collector status is missing from the dashboard.');
+  if (!allowUnhealthyEnvironment) {
+    assert(serviceStatusText.includes('运行中'), 'Daily log collector is not running in the healthy-runtime smoke environment.');
+  }
   const runtimeInfo = await page.evaluate(async () => {
     const response = await fetch('/api/dashboard');
     const dashboard = await response.json();
@@ -397,7 +406,17 @@ async function shutdownBrowser() {
   });
 
   await sidebarPanel(page, 'logs').click();
-  await page.waitForFunction(() => document.querySelectorAll('#logBody .insight-entry').length > 0);
+  const insightsLoaded = await page.waitForFunction(
+    () => document.querySelectorAll('#logBody .insight-entry').length > 0,
+    null,
+    { timeout: allowUnhealthyEnvironment ? 2500 : 15000 }
+  ).then(() => true).catch(() => false);
+  if (!insightsLoaded && !allowUnhealthyEnvironment) {
+    throw new Error('Log explanation did not load in the healthy-runtime smoke environment.');
+  }
+  if (!insightsLoaded) {
+    console.log('UI_ENVIRONMENT_WARNING=live-log-insights-not-available');
+  }
   assert(await page.locator('#smartLogs').isChecked(), 'Smart log explanation is not enabled by default.');
   assert(await page.locator('#logSummary .log-summary-card').count() === 4, 'Log summary cards are incomplete.');
   assert(await page.locator('#incidentList').count() === 1, 'Incident journal panel is missing.');

@@ -38,7 +38,7 @@ if (-not $git) {
 
 foreach ($required in @(
     'LICENSE', 'package.json', 'package-lock.json', 'README.md', 'README.en.md', 'CONTRIBUTING.md', 'SECURITY.md', 'CHANGELOG.md',
-    'desktop/PalworldConsole.Desktop/PalworldConsole.Desktop.csproj', 'desktop/PalworldConsole.Desktop/Program.cs', 'desktop/PalworldConsole.Desktop/packages.lock.json', 'docs/desktop-app.md',
+    'desktop/PalworldConsole.Desktop/PalworldConsole.Desktop.csproj', 'desktop/PalworldConsole.Desktop/Program.cs', 'desktop/PalworldConsole.Desktop/packages.lock.json', 'installer/PalworldServerConsole.wxs', 'docs/desktop-app.md',
     'docs/public-release-readiness.md', '.github/PULL_REQUEST_TEMPLATE.md',
     '.github/ISSUE_TEMPLATE/bug_report.md', '.github/ISSUE_TEMPLATE/feature_request.md'
 )) {
@@ -57,7 +57,7 @@ foreach ($path in $trackedFiles) {
     }
 }
 
-$textExtensions = @('.md', '.ps1', '.bat', '.cjs', '.js', '.json', '.yml', '.yaml', '.txt', '.example', '')
+$textExtensions = @('.md', '.ps1', '.bat', '.cjs', '.js', '.json', '.yml', '.yaml', '.txt', '.example', '.wxs', '')
 foreach ($path in $trackedFiles) {
     $extension = [System.IO.Path]::GetExtension($path).ToLowerInvariant()
     if ($extension -notin $textExtensions) { continue }
