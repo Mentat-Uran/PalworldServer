@@ -1,6 +1,6 @@
 # Windows desktop application
 
-`PalworldServerConsole.exe` is the 1.0 Windows desktop host for the existing
+`PalworldServerConsole.exe` is the Windows desktop host for the existing
 local Web Console. It embeds the same web frontend in Microsoft Edge WebView2;
 it does not create a second Docker, Windows-runtime, REST, RCON, or settings
 backend.
@@ -47,7 +47,7 @@ NuGet registry for the first restore.
 ```powershell
 .\scripts\test-desktop-host.ps1
 .\scripts\test-desktop-installer.ps1
-.\scripts\build-desktop-app.ps1 -SelfContained -Msi -Zip -Version 0.1.1
+.\scripts\build-desktop-app.ps1 -SelfContained -Msi -Zip
 ```
 
 The published application is written under `output\desktop-app\`; output is
@@ -72,7 +72,7 @@ Run the resulting executable with an explicit project root when it is installed
 outside the repository:
 
 ```powershell
-& 'C:\path\to\PalworldServerConsole.exe' --project-root 'C:\Services\PalworldServer'
+& 'C:\path\to\PalworldServerConsole.exe' --project-root 'C:\path\to\PalworldServer'
 ```
 
 On first launch without this argument, select the project folder containing

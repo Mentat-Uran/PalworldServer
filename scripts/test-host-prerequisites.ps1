@@ -71,12 +71,17 @@ if ($Runtime -eq 'docker') {
 }
 
 if ($RequireTunnel) {
-    $launcherCandidates = @(
-        'C:\Program Files\SakuraFrpLauncher\SakuraLauncher.exe',
-        'C:\Program Files\SakuraFrp\SakuraLauncher.exe'
-    )
-    if (-not (@($launcherCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }).Count)) {
-        Add-HostError 'SakuraFrp Launcher was not found in a known default location. Configure a UDP tunnel separately before remote play.'
+    $configuredExecutable = $null
+    $envTunnel = Get-Content -LiteralPath $envPath -Encoding utf8 | Where-Object { $_ -match '^\s*TUNNEL_EXECUTABLE\s*=' } | Select-Object -First 1
+    if ($envTunnel -match '^\s*TUNNEL_EXECUTABLE\s*=\s*(.+?)\s*$') {
+        $configuredExecutable = $matches[1].Trim().Trim('"').Trim("'")
+    }
+    if ($configuredExecutable) {
+        if (-not (Test-Path -LiteralPath $configuredExecutable -PathType Leaf) -and -not (Get-Command $configuredExecutable -ErrorAction SilentlyContinue)) {
+            Add-HostError 'The configured tunnel executable was not found. Configure a valid provider executable before remote play.'
+        }
+    } else {
+        Add-HostWarning 'No TUNNEL_EXECUTABLE is configured; provider auto-discovery is intentionally not assumed.'
     }
 }
 

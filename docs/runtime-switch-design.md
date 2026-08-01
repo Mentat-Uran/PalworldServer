@@ -2,7 +2,7 @@
 
 - 日期：2026-07-28
 - 状态：已实施；2026-07-31 完成本地 Docker→Windows→Docker 回归与 Windows tar 备份实测。远端隧道、多人稳定性和生产恢复仍不在此结论内。
-- 上游文档：[README.md](file:///C:/Services/PalworldServer/README.md)、[docs/spec.md](file:///C:/Services/PalworldServer/docs/spec.md)、[AGENTS.md](file:///C:/Services/PalworldServer/AGENTS.md)
+- 上游文档：[README.md](../README.md)、[docs/architecture.md](architecture.md)、[AGENTS.md](../AGENTS.md)
 - 目标：在保留现有 Docker 部署完整可用的前提下，新增 Windows 原生 dedicated server 启动方式，两种运行时共享同一套 Web UI、管理 API、配置源、ENV、备份/日志体系和同一份世界存档，任一时刻只能运行其中一种。Windows 方式需支持原生服务端启动/停止、REST、配置应用、日志、备份、状态监控与受控的官方 Mod 管理。
 
 ## 0. 方案选型与关键决策
@@ -44,7 +44,7 @@
 ### 1.2 目标目录结构
 
 ```text
-C:\Services\PalworldServer\
+<project-root>\
 ├── data\
 │   ├── Pal\Saved\
 │   │   ├── Config\
@@ -222,7 +222,7 @@ Windows 原生服务端通过 SteamCMD 更新时可能：
 物理存档固定在：
 
 ```text
-C:\Services\PalworldServer\data\Pal\Saved\SaveGames\
+<project-root>\data\Pal\Saved\SaveGames\
 ```
 
 Docker 容器直接通过 bind mount 看到该路径（容器内 `/palworld/Pal/Saved/SaveGames/`），无需额外 junction。
@@ -230,7 +230,7 @@ Docker 容器直接通过 bind mount 看到该路径（容器内 `/palworld/Pal/
 Windows 服务端需要 junction：
 
 ```text
-C:\Services\PalworldServer\win-server\Pal\Saved\SaveGames  ←─ junction ─→  C:\Services\PalworldServer\data\Pal\Saved\SaveGames
+<project-root>\win-server\Pal\Saved\SaveGames  ←─ junction ─→  <project-root>\data\Pal\Saved\SaveGames
 ```
 
 #### 3.1.2 Junction 创建与修复
@@ -239,8 +239,8 @@ C:\Services\PalworldServer\win-server\Pal\Saved\SaveGames  ←─ junction ─�
 
 ```powershell
 function Assert-SaveGamesJunction {
-    $target = 'C:\Services\PalworldServer\data\Pal\Saved\SaveGames'
-    $link   = 'C:\Services\PalworldServer\win-server\Pal\Saved\SaveGames'
+    $target = '<project-root>\data\Pal\Saved\SaveGames'
+    $link   = '<project-root>\win-server\Pal\Saved\SaveGames'
 
     # 1. 确保物理存档目录存在
     if (-not (Test-Path $target)) {
@@ -400,10 +400,10 @@ install-win-server.ps1 [-Force]
      - 若存在且 -Force 未指定：校验版本并退出
      - 若存在且 -Force：备份当前 win-server\Pal\Saved\Config\，删除 win-server\
   2. 下载 SteamCMD：https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip
-  3. 解压到 C:\Services\PalworldServer\steamcmd\
+  3. 解压到 <project-root>\steamcmd\
   4. 运行 steamcmd\steamcmd.exe：
        login anonymous
-       force_install_dir C:\Services\PalworldServer\win-server
+       force_install_dir <project-root>\win-server
        app_update 2394010 validate
        quit
   5. 等待下载完成（Palworld dedicated server 约 5 GB）
@@ -1188,9 +1188,9 @@ function Update-RuntimeState {
 
 - `README.md`：新增 Windows 启动方式、切换命令
 - `AGENTS.md`：记录决策与状态
-- `docs/spec.md`：保留为历史设计，不修改
+- `docs/architecture.md`：当前公开架构和安全边界
 - `docs/runtime-switch-design.md`（本文件）：标注实施进度
-- `docs/session-log.md`：记录每个里程碑的会话
+- `docs/change-archive.md`：公开变更记录
 
 ### 11.3.1 实施进度（截至 2026-07-28）
 
@@ -1281,7 +1281,7 @@ function Update-RuntimeState {
 
 ## 14. 开放问题（实施前需确认）
 
-1. **SteamCMD 安装路径**：默认 `C:\Services\PalworldServer\steamcmd\` 与 `win-server\`，是否需要可配置？
+1. **SteamCMD 安装路径**：默认使用项目目录下的 `steamcmd\` 与 `win-server\`，是否需要可配置？
 2. **Windows 防火墙规则命名**：建议 `Palworld Block REST 8212 Public` / `Palworld Block RCON 25575 Public`，是否与现有命名约定一致？
 3. **Mod 默认 `managerEnabled`**：Docker active 时设 false，Windows active 时设 true。是否需要在 manifest.json 中保留 `userOverride` 字段，允许用户强制禁用？
 4. **快照保留策略默认值**：Full 3 份 + 1GB / Light 10 份。是否需要 Web Console 设置页提供调整入口？
@@ -1396,6 +1396,6 @@ function Test-RuntimeSwitching {
 
 本文件描述完整的设计，可作为新会话实施的依据。任何实施过程中的偏差应通过以下方式处理：
 
-- 微小偏差（实现细节）：直接实施，记录到 session-log.md
+- 微小偏差（实现细节）：直接实施，记录到 change-archive.md
 - 中等偏差（接口/字段）：更新本文件 + 提交 git
 - 重大偏差（架构选择）：先回到设计讨论，确认后再实施

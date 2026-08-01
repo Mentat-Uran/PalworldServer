@@ -11,6 +11,15 @@ tunnel, backup restore, or remote player connection has been verified.
 
 No unreleased changes.
 
+## [0.2.0] - 2026-08-02
+
+### Added
+
+- Unified REST management operations, neutral defaults, explicit network modes,
+  optional tunnel providers, first-run bootstrap, support bundles, and a
+  complete source release bundle.
+- A single version source and local version-consistency validation.
+
 ## [0.1.2] - 2026-08-02
 
 ### Added
@@ -115,4 +124,4 @@ No unreleased changes.
 
 ## Release history
 
-The latest public release is [v0.1.1](https://github.com/Mentat-Uran/PalworldServer/releases/tag/v0.1.1).
+The latest public release is [v0.2.0](https://github.com/Mentat-Uran/PalworldServer/releases/tag/v0.2.0).

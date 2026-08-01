@@ -10,17 +10,14 @@ services:
       - target: ${PORT:-8211}        # 游戏端口 UDP
         published: ${PORT:-8211}
         protocol: udp
-      - target: ${RCON_PORT:-25575}  # RCON 端口 TCP
-        published: ${RCON_PORT:-25575}
-        host_ip: 127.0.0.1   # 仅本机；绝不通过 SakuraFrp 暴露
+      - target: ${REST_API_PORT:-8212}  # REST 管理端口 TCP，仅本机
+        published: ${REST_API_PORT:-8212}
+        host_ip: 127.0.0.1
         protocol: tcp
     env_file:
       - .env
     volumes:
       - ./data:/palworld/
-    memswap_limit: 12G       # memory(8G) + swap(4G) 总和
-    deploy:
-      resources:
-        limits:
-          cpus: '6'
-          memory: 8G
+    # The public default intentionally has no hard memory cap. A host with
+    # less than 16 GiB available memory is below the recommended baseline.
+    # Put optional CPU/memory limits in docker-compose.override.yml.

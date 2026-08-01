@@ -4,11 +4,17 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$projectDir = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'management-api.ps1')
+$management = Get-ManagementEndpointConfig -ProjectDirectory $projectDir
 
-$requiredRules = @(
-    @{ Name = 'Palworld Block REST 8212 Public'; Port = 8212 },
-    @{ Name = 'Palworld Block RCON 25575 Public'; Port = 25575 }
-)
+$requiredRules = @()
+if ($management.restEnabled) {
+    $requiredRules += @{ Name = "Palworld Block REST $($management.restPort) Public"; Port = $management.restPort }
+}
+if ($management.legacyRconEnabled) {
+    $requiredRules += @{ Name = "Palworld Block RCON $($management.rconPort) Public"; Port = $management.rconPort }
+}
 
 function Test-ManagementFirewallRules {
     $missing = @()
@@ -27,10 +33,27 @@ function Test-ManagementFirewallRules {
     return $missing
 }
 
+function Remove-StaleManagementRules {
+    $expectedNames = @($requiredRules | ForEach-Object { $_.Name })
+    $stale = @(Get-NetFirewallRule -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.DisplayName -like 'Palworld Block REST * Public' -or
+            $_.DisplayName -like 'Palworld Block RCON * Public'
+        } |
+        Where-Object { $expectedNames -notcontains $_.DisplayName })
+    foreach ($rule in $stale) {
+        try { Remove-NetFirewallRule -Name $rule.Name -ErrorAction Stop } catch { throw "Failed to remove stale management firewall rule '$($rule.DisplayName)': $($_.Exception.Message)" }
+        Write-Host "Removed stale firewall rule: $($rule.DisplayName)"
+    }
+}
+
+if (-not $Check) {
+    Remove-StaleManagementRules
+}
 $missing = Test-ManagementFirewallRules
 if ($Check) {
     if ($missing.Count -eq 0) {
-        Write-Host 'WIN_MANAGEMENT_FIREWALL_READY=true'
+        Write-Host "WIN_MANAGEMENT_FIREWALL_READY=true rest=$($management.restEnabled) rcon=$($management.legacyRconEnabled)"
         exit 0
     }
     Write-Host "WIN_MANAGEMENT_FIREWALL_READY=false missing=$($missing -join '; ')"

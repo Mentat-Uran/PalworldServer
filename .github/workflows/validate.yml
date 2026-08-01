@@ -57,6 +57,8 @@ jobs:
           .\scripts\test-player-session-times.ps1
           .\scripts\test-runtime-orchestration-contract.ps1
           .\scripts\test-runtime-common-behavior.ps1
+          .\scripts\test-management-network-contract.ps1
+          .\scripts\test-version-consistency.ps1
           .\scripts\test-desktop-host.ps1
           .\scripts\test-desktop-installer.ps1
           .\scripts\test-windows-installer-bat.ps1

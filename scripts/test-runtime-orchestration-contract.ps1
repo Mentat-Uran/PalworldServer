@@ -89,10 +89,15 @@ Assert-FunctionSet 'scripts\win-runtime.ps1' @(
     'Get-WindowsRuntimeMetrics'
 )
 Assert-SourceTokens $windows @(
-    'Authorization', 'Basic $b64', 'Invoke-WebRequest',
-    'Palworld Block REST 8212 Public', 'Palworld Block RCON 25575 Public',
-    'data\Pal\Saved\SaveGames'
+    'Invoke-ManagementOperation', 'Get-ManagementEndpointConfig',
+    'Test-WindowsManagementFirewall', 'data\Pal\Saved\SaveGames'
 ) 'win-runtime'
+
+$management = Read-ProjectSource 'scripts\management-api.ps1'
+Assert-SourceTokens $management @(
+    'Authorization', 'basicBytes', 'ToBase64String', 'Invoke-WebRequest',
+    '/announce', '/kick', '/ban', '/unban', '/save', '/shutdown'
+) 'management-api'
 
 $switch = Read-ProjectSource 'scripts\switch-runtime.ps1'
 Assert-FunctionSet 'scripts\switch-runtime.ps1' @(

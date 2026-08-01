@@ -59,7 +59,7 @@
     </div>
     <div class="nav-item" data-panel="rcon">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-      <span>RCON</span>
+      <span data-i18n="nav.management">管理操作</span>
     </div>
     <div class="nav-item" data-panel="backup">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -410,12 +410,28 @@
     <section class="panel" id="panel-rcon">
       <div class="panel-header">
         <div>
-          <div class="panel-title"><span>04</span>RCON</div>
-          <div class="panel-subtitle" data-i18n="panel.rcon.desc">兼容性 RCON 终端，仅本机访问；常用保存操作已优先使用 REST。</div>
+          <div class="panel-title"><span>04</span><span data-i18n="panel.management.title">管理操作</span></div>
+          <div class="panel-subtitle" data-i18n="panel.rcon.desc">常用操作使用官方 REST API；兼容 RCON 仅在明确启用时显示。</div>
         </div>
       </div>
 
-      <div class="rcon-layout">
+      <div class="rest-management-card">
+        <h3 data-i18n="rest.title">REST 管理操作</h3>
+        <p data-i18n="rest.desc">这些按钮使用结构化 REST 请求，不需要输入自由文本命令。</p>
+        <div class="rest-management-grid">
+          <label><span data-i18n="rest.announce">服务器公告</span><input id="restAnnouncement" maxlength="400" data-i18n-placeholder="rest.announce.placeholder" placeholder="输入公告内容"></label>
+          <button type="button" class="btn" id="btnRestAnnounce" data-i18n="rest.announce.send">发送公告</button>
+          <label><span data-i18n="rest.playerId">玩家 ID</span><input id="restPlayerId" maxlength="256" data-i18n-placeholder="rest.playerId.placeholder" placeholder="从当前玩家列表复制"></label>
+          <label><span data-i18n="rest.playerAction">玩家操作</span><select id="restPlayerAction"><option value="kick" data-i18n="rest.kick">踢出</option><option value="ban" data-i18n="rest.ban">封禁</option><option value="unban" data-i18n="rest.unban">解封</option></select></label>
+          <input id="restPlayerMessage" maxlength="400" data-i18n-placeholder="rest.playerMessage.placeholder" placeholder="可选提示消息">
+          <button type="button" class="btn" id="btnRestPlayerAction" data-i18n="rest.player.send">执行玩家操作</button>
+          <label><span data-i18n="rest.shutdown">停服等待秒数</span><input id="restShutdownWait" type="number" min="0" max="600" value="30"></label>
+          <button type="button" class="btn danger" id="btnRestShutdown" data-i18n="rest.shutdown.send">通过 REST 停服</button>
+        </div>
+        <div id="restManagementStatus" role="status" aria-live="polite"></div>
+      </div>
+
+      <div id="legacyRconBlock" class="rcon-layout">
         <div class="rcon-terminal">
           <div class="rcon-output" id="rconOutput">
             <div class="rcon-line out" data-i18n="rcon.ready">RCON 控制台就绪。输入命令或从右侧选择。</div>

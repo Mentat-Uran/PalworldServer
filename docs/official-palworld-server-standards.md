@@ -68,7 +68,7 @@
 
 当前项目存在两个明确偏差：
 
-1. 使用 Windows Docker Desktop + WSL2，并把 `C:\Services\PalworldServer\data` 挂载到容器 `/palworld`。
+1. 使用 Windows Docker Desktop + WSL2，并把项目目录下的 `data` 挂载到容器 `/palworld`。
 2. 使用固定摘要的社区镜像 `thijsvanloef/palworld-server-docker`，不是 Pocketpair 官方镜像。
 
 这两个差异属于已知并接受的项目决策，不代表当前部署错误，也不触发主动迁移。当前方案继续使用 NVMe 存储、双层备份、优雅停服、镜像摘要固定和健康检查控制风险。只有出现下列触发条件时，才转向官方方案进行迁移评估：
@@ -134,7 +134,7 @@ Windows 原生入口为 `PalServer.exe`，Linux 原生入口为 `PalServer.sh`�
 8. 检查 UDP `8211`、本地管理端口和日志。
 9. 在未完成恢复演练前保留升级前备份，不提前清理。
 
-当前 `UPDATE_ON_BOOT=true` 会在容器启动时更新游戏服务端文件，镜像摘要固定并不等于游戏版本固定。因此，在已知官方发布更新后重启容器之前，必须先创建新备份。
+当前模板 `UPDATE_ON_BOOT=false`，不会默认在容器启动时更新游戏服务端文件。镜像摘要固定并不等于游戏版本固定；维护窗口内如需更新，必须先创建新备份。
 
 ## 5. 配置文件规范
 
@@ -150,7 +150,7 @@ Windows 原生入口为 `PalServer.exe`，Linux 原生入口为 `PalServer.sh`�
 本项目容器运行 Linux 服务端，实际配置位于：
 
 ```text
-C:\Services\PalworldServer\data\Pal\Saved\Config\LinuxServer\PalWorldSettings.ini
+<project-root>\data\Pal\Saved\Config\LinuxServer\PalWorldSettings.ini
 ```
 
 项目通过社区镜像的 `.env` 生成该文件。每次改动后必须检查生成后的 INI 或 REST `settings`，不能只根据 `.env` 认定配置已生效。
@@ -227,7 +227,7 @@ C:\Services\PalworldServer\data\Pal\Saved\Config\LinuxServer\PalWorldSettings.in
 | POST | `/shutdown` | 延时并通知后停服 | 高风险 |
 | POST | `/stop` | 强制停止 | 应急专用 |
 
-本项目不把宿主机 `8212` 发布到外部；Web Console 通过容器内 `rest-cli` 使用 REST。新增功能必须优先使用 REST，不得新增 RCON 依赖。
+本项目把 REST 管理端口只绑定到宿主机回环地址；Web Console 和本机脚本使用 REST。新增功能必须优先使用 REST，不得新增 RCON 依赖。
 
 ## 8. RCON 规范
 
@@ -236,7 +236,7 @@ C:\Services\PalworldServer\data\Pal\Saved\Config\LinuxServer\PalWorldSettings.in
 - RCON 不应直接暴露到互联网，推荐只在 LAN 使用。
 - 含中文、日文等多字节字符的玩家名可能被截断；需要这类字符时应使用 REST。
 
-本项目暂时保留 RCON 兼容终端，并只绑定 `127.0.0.1:25575`。规则：
+本项目暂时保留显式启用的 RCON 兼容终端，并只允许回环访问。默认配置关闭 RCON。规则：
 
 - 新功能禁止以 RCON 为首选实现。
 - REST 能完成的操作必须使用 REST。
@@ -332,15 +332,15 @@ SakuraFrp 的远程端口不是 Palworld 的本地监听端口，不能写入 `P
 
 | 官方要求或方向 | 当前状态 | 结论 |
 |---|---|---|
-| 4 核以上、16 GB 内存、SSD | 主机 8C/16T、48 GB、NVMe；容器限制 8 GB | 主机符合，容器内存低于官方基线 |
+| 4 核以上、16 GB 内存、SSD | 推荐主机 4 核以上、16 GB 内存和 SSD；具体上限由部署者决定 | 以实际部署配置和本地预检为准 |
 | UDP 8211 | 已发布并供本机/SakuraFrp 使用 | 符合 |
 | Docker Desktop 不推荐 | 当前正使用 Docker Desktop + NTFS bind mount | 已接受差异；出现实际问题时再评估迁移 |
 | 官方 Docker 镜像 | 当前使用固定摘要且已验证的社区镜像 | 当前主方案；官方路径作为回退 |
 | 正确运行时配置 | LinuxServer INI 已核对，REST 返回预期值 | 符合 |
-| REST 不公网暴露 | 8212 未映射到宿主机 | 符合 |
-| RCON deprecated 且不公网暴露 | 保留兼容，绑定 127.0.0.1 | 暂时可接受，应继续去依赖 |
+| REST 不公网暴露 | 8212 仅绑定到宿主机回环地址 | 符合 |
+| RCON deprecated 且不公网暴露 | 默认关闭，显式启用时只允许回环访问 | 暂时可接受，应继续去依赖 |
 | Community 才支持 Xbox/PS5 加入 | 当前 `COMMUNITY=false` | Xbox/PS5 尚不可据配置宣称可用 |
-| 更新前备份 | 有自动与手动备份；`UPDATE_ON_BOOT=true` | 需要在预期更新前额外手动备份 |
+| 更新前备份 | 有自动与手动备份；`UPDATE_ON_BOOT=false` | 维护窗口内仍需手动确认备份 |
 | 服务端 Mod 仅 Windows | Linux Docker、管理器禁用、空清单 | 符合 fail-closed |
 | 非 PvP 默认 | 三项 PvP 开关为 false | 符合 |
 | 备份可恢复 | 已验证创建，未完成真实恢复 | 部分完成 |

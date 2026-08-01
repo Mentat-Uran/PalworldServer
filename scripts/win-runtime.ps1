@@ -8,6 +8,7 @@
 if (-not (Get-Command Get-RuntimeState -ErrorAction SilentlyContinue)) {
     . (Join-Path $PSScriptRoot 'runtime-common.ps1')
 }
+. (Join-Path $PSScriptRoot 'management-api.ps1')
 
 $projectDir = Split-Path -Parent $PSScriptRoot
 $winServerDir = Join-Path $projectDir 'win-server'
@@ -18,10 +19,6 @@ $saveGamesTarget = Join-Path $projectDir 'data\Pal\Saved\SaveGames'
 $saveGamesJunction = Join-Path $winServerDir 'Pal\Saved\SaveGames'
 $logSourceDir = Join-Path $projectDir 'data\log-sources\windows-server'
 $runtimeEventSourceDir = Join-Path $projectDir 'data\log-sources\windows-runtime'
-
-# REST base URL (Windows server binds 0.0.0.0:8212 by default;
-# we call it via 127.0.0.1 since we're on the same host)
-$restBaseUrl = 'http://127.0.0.1:8212/v1/api'
 
 # ---------------------------------------------------------------------------
 # Junction management (M4)
@@ -319,39 +316,10 @@ function Invoke-WinRest {
     param(
         [Parameter(Mandatory)][string]$Path,
         [ValidateSet('GET','POST')][string]$Method = 'GET',
+        [System.Collections.IDictionary]$Body,
         [int]$TimeoutMs = 30000
     )
-    $url = $restBaseUrl + $Path
-    # Palworld REST API requires HTTP Basic auth with admin:password
-    $envVars = @{}
-    $envPath = Join-Path $projectDir '.env'
-    if (Test-Path -LiteralPath $envPath -PathType Leaf) {
-        Get-Content -LiteralPath $envPath | ForEach-Object {
-            $line = $_.Trim()
-            if ($line -eq "" -or $line.StartsWith("#")) { return }
-            $idx = $line.IndexOf("=")
-            if ($idx -le 0) { return }
-            $k = $line.Substring(0, $idx).Trim()
-            $v = $line.Substring($idx + 1).Trim()
-            if ($v.Length -ge 2 -and $v.StartsWith('"') -and $v.EndsWith('"')) { $v = $v.Substring(1, $v.Length - 2) }
-            $envVars[$k] = $v
-        }
-    }
-    $adminPwd = [string]$envVars["ADMIN_PASSWORD"]
-    $basic = "admin:" + $adminPwd
-    $bytes = [System.Text.Encoding]::ASCII.GetBytes($basic)
-    $b64 = [System.Convert]::ToBase64String($bytes)
-    $headers = @{ "Authorization" = "Basic $b64" }
-    try {
-        if ($Method -eq 'GET') {
-            $response = Invoke-WebRequest -Uri $url -Method GET -Headers $headers -TimeoutSec ([int]($TimeoutMs/1000)) -UseBasicParsing -ErrorAction Stop
-        } else {
-            $response = Invoke-WebRequest -Uri $url -Method POST -Headers $headers -TimeoutSec ([int]($TimeoutMs/1000)) -UseBasicParsing -ErrorAction Stop
-        }
-        return @{ ok = $true; statusCode = $response.StatusCode; content = $response.Content }
-    } catch {
-        return @{ ok = $false; error = $_.Exception.Message }
-    }
+    return Invoke-ManagementRestRequest -ProjectDirectory $projectDir -Path $Path -Method $Method -Body $Body -TimeoutMs $TimeoutMs
 }
 
 # ---------------------------------------------------------------------------
@@ -363,10 +331,11 @@ function Test-WindowsManagementFirewall {
        rules are the fail-closed boundary that permits loopback management
        without allowing LAN/public connections. #>
     $missing = @()
-    foreach ($required in @(
-        @{ Name = 'Palworld Block REST 8212 Public'; Port = 8212 },
-        @{ Name = 'Palworld Block RCON 25575 Public'; Port = 25575 }
-    )) {
+    $management = Get-ManagementEndpointConfig -ProjectDirectory $projectDir
+    $requiredRules = @()
+    if ($management.restEnabled) { $requiredRules += @{ Name = "Palworld Block REST $($management.restPort) Public"; Port = $management.restPort } }
+    if ($management.legacyRconEnabled) { $requiredRules += @{ Name = "Palworld Block RCON $($management.rconPort) Public"; Port = $management.rconPort } }
+    foreach ($required in $requiredRules) {
         $matches = @()
         try {
             $rules = @(Get-NetFirewallRule -DisplayName $required.Name -ErrorAction SilentlyContinue |
@@ -430,7 +399,12 @@ function Start-WindowsRuntime {
     # silently drops its stdout subscriptions. -abslog is an engine-owned,
     # best-effort raw-log path; lifecycle evidence is written separately.
     $logPath = Get-WinLogPath
-    $argString = "-port=8211 -queryport=27015 -useperfthreads -NoAsyncLoadingThread -UseMultithreadForLoad -rcon -rpc -restapi -log -abslog=`"$logPath`""
+    $management = Get-ManagementEndpointConfig -ProjectDirectory $projectDir
+    $flags = @("-port=$($management.gamePort)", "-queryport=$($management.queryPort)", '-useperfthreads', '-NoAsyncLoadingThread', '-UseMultithreadForLoad')
+    if ($management.legacyRconEnabled) { $flags += @('-rcon', '-rpc') }
+    if ($management.restEnabled) { $flags += '-restapi' }
+    $flags += @('-log', "-abslog=`"$logPath`"")
+    $argString = $flags -join ' '
     Write-WindowsRuntimeEvent -Event 'start-requested' -Message "Launching PalServer.exe; engine raw output path=$logPath (best-effort)."
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -484,7 +458,7 @@ function Stop-WindowsRuntime {
 
     # 1. Try REST /stop
     Write-WindowsRuntimeEvent -Event 'stop-requested' -Message "Requesting graceful REST stop for launcher PID=$pidValue."
-    $rest = Invoke-WinRest -Path '/stop' -Method POST -TimeoutMs 30000
+    $rest = Invoke-WinRest -Path '/shutdown' -Method POST -Body ([ordered]@{ waittime = 30; message = 'Server shutdown requested by the local console.' }) -TimeoutMs 30000
     if ($rest.ok) {
         # Wait for process to exit
         $waited = 0
@@ -708,7 +682,9 @@ function Invoke-WindowsRcon {
 
     $client = New-Object System.Net.Sockets.TcpClient
     try {
-        $connect = $client.BeginConnect('127.0.0.1', 25575, $null, $null)
+        $management = Get-ManagementEndpointConfig -ProjectDirectory $projectDir
+        if (-not $management.legacyRconEnabled) { return @{ ok = $false; code = 'legacy-rcon-disabled'; error = 'Legacy RCON is disabled.' } }
+        $connect = $client.BeginConnect($management.rconBindAddress, $management.rconPort, $null, $null)
         if (-not $connect.AsyncWaitHandle.WaitOne($Timeout * 1000)) {
             throw 'Local RCON connection timed out.'
         }
@@ -765,12 +741,18 @@ function Invoke-WindowsRuntimeSave {
         Start-Sleep -Seconds 2
         return @{ ok = $true; method = 'rest' }
     }
-    $rcon = Invoke-WindowsRcon -Command 'Save' -Timeout ([math]::Min(15, [math]::Max(5, $Timeout)))
-    if ($rcon.ok) {
-        Start-Sleep -Seconds 2
-        return @{ ok = $true; method = 'rcon' }
-    }
-    return @{ ok = $false; error = "REST save failed: $($r.error); RCON fallback failed: $($rcon.error)" }
+    return @{ ok = $false; error = "REST save failed: $($r.error)"; code = $r.code }
+}
+
+function Invoke-WindowsRuntimeOperation {
+    param(
+        [Parameter(Mandatory)][ValidateSet('announce','kick','ban','unban')][string]$Operation,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Payload,
+        [int]$Timeout = 30
+    )
+    $r = Invoke-ManagementOperation -ProjectDirectory $projectDir -Operation $Operation -Payload $Payload
+    if ($r.ok) { return @{ ok = $true; method = 'rest'; operation = $Operation; content = $r.content } }
+    return @{ ok = $false; method = 'rest'; operation = $Operation; code = $r.code; error = $r.error }
 }
 
 function Get-WindowsRuntimeVersion {

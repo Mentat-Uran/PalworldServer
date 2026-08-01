@@ -4,7 +4,6 @@ title Palworld Server (Windows Native)
 
 set "PROJECT_DIR=%~dp0"
 set "PROJECT_DIR=%PROJECT_DIR:~0,-1%"
-set "SAKURA=C:\Program Files\SakuraFrpLauncher\SakuraLauncher.exe"
 set "WIN_SERVER=%PROJECT_DIR%\win-server"
 set "PAL_SERVER=%WIN_SERVER%\PalServer.exe"
 
@@ -38,14 +37,15 @@ if "!SWITCH_EXIT!"=="2" (
 )
 
 echo.
-echo [3/5] Starting SakuraFrp Launcher...
-if exist "%SAKURA%" (
-    start "" "%SAKURA%"
-    echo [OK] SakuraFrp started.
-) else (
-    echo [WARN] SakuraFrp not found at: %SAKURA%
-    echo        Edit SAKURA path in this script if installed elsewhere.
+echo [3/5] Starting configured tunnel provider...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\scripts\tunnel-provider.ps1" -Action Start
+if errorlevel 1 (
+    echo [FAIL] Configured tunnel provider could not be started.
+    echo        Set NETWORK_MODE=direct to run without a tunnel.
+    pause
+    exit /b 1
 )
+echo [OK] Tunnel provider step completed. Provider none is a safe no-op.
 
 echo.
 echo [4/5] Starting Web Console...
@@ -74,7 +74,7 @@ echo ============================================
 echo   All started (Windows Native mode).
 echo   - Game: 127.0.0.1:8211
 echo   - Web Console: http://localhost:%PANEL_PORT%/
-echo   - SakuraFrp: check launcher for tunnel address
+echo   - Tunnel: check the configured provider; external access is not verified here
 echo   - Daily logs: data\log-archive\YYYY-MM-DD.txt
 echo ============================================
 echo.
@@ -98,9 +98,9 @@ taskkill /FI "WINDOWTITLE eq Palworld Web Console*" /F 2>nul
 echo [OK] Web Console closed.
 
 echo.
-echo [2/4] Closing SakuraFrp...
-taskkill /IM SakuraLauncher.exe /F 2>nul
-echo [OK] SakuraFrp closed.
+echo [2/4] Stopping the project-owned tunnel provider...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\scripts\tunnel-provider.ps1" -Action Stop
+if errorlevel 1 echo [WARN] Tunnel provider stop was refused or failed; unrelated processes were not touched.
 
 echo.
 echo [3/4] Stopping Windows native server (REST /stop + graceful)...

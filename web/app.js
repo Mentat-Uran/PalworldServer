@@ -191,6 +191,7 @@ const I18N = {
     'nav.overview': '概览',
     'nav.settings': '设置',
     'nav.logs': '日志',
+    'nav.management': '管理操作',
     'nav.backup': '备份',
     'nav.mods': 'Mod 管理',
     'nav.runtime': '运行时切换',
@@ -208,7 +209,23 @@ const I18N = {
     'panel.settings.desc': '编辑 .env 值。保存后写入文件并重启当前服务。',
     'panel.logs': '日志',
     'panel.logs.desc': '当前服务日志（最近 300 行）',
-    'panel.rcon.desc': '兼容性 RCON 终端，仅本机访问；常用保存操作已优先使用 REST。',
+    'panel.management.title': '管理操作',
+    'panel.rcon.desc': '常用操作使用官方 REST API；兼容 RCON 仅在明确启用时显示。',
+    'rest.title': 'REST 管理操作',
+    'rest.desc': '这些按钮使用结构化 REST 请求，不需要输入自由文本命令。',
+    'rest.announce': '服务器公告',
+    'rest.announce.placeholder': '输入公告内容',
+    'rest.announce.send': '发送公告',
+    'rest.playerId': '玩家 ID',
+    'rest.playerId.placeholder': '从当前玩家列表复制',
+    'rest.playerAction': '玩家操作',
+    'rest.kick': '踢出',
+    'rest.ban': '封禁',
+    'rest.unban': '解封',
+    'rest.playerMessage.placeholder': '可选提示消息',
+    'rest.player.send': '执行玩家操作',
+    'rest.shutdown': '停服等待秒数',
+    'rest.shutdown.send': '通过 REST 停服',
     'panel.backup': '备份',
     'panel.backup.desc': '手动与定时备份。存储于 data/backups/',
     'panel.mods': 'Mod 管理',
@@ -519,6 +536,7 @@ const I18N = {
     'nav.overview': 'Overview',
     'nav.settings': 'Settings',
     'nav.logs': 'Logs',
+    'nav.management': 'Management',
     'nav.backup': 'Backup',
     'nav.mods': 'Mod Manager',
     'nav.runtime': 'Runtime Switch',
@@ -536,7 +554,23 @@ const I18N = {
     'panel.settings.desc': 'Edit .env values. Saving writes the file and restarts the active service.',
     'panel.logs': 'LOGS',
     'panel.logs.desc': 'Current service logs (last 300 lines)',
-    'panel.rcon.desc': 'Compatibility RCON terminal, localhost only. Common save actions prefer REST.',
+    'panel.management.title': 'MANAGEMENT',
+    'panel.rcon.desc': 'Common operations use the official REST API. Legacy RCON appears only when explicitly enabled.',
+    'rest.title': 'REST management operations',
+    'rest.desc': 'These controls send structured REST requests instead of free-form commands.',
+    'rest.announce': 'Server announcement',
+    'rest.announce.placeholder': 'Enter an announcement',
+    'rest.announce.send': 'Send announcement',
+    'rest.playerId': 'Player ID',
+    'rest.playerId.placeholder': 'Copy from the current player table',
+    'rest.playerAction': 'Player action',
+    'rest.kick': 'Kick',
+    'rest.ban': 'Ban',
+    'rest.unban': 'Unban',
+    'rest.playerMessage.placeholder': 'Optional message',
+    'rest.player.send': 'Run player action',
+    'rest.shutdown': 'Shutdown wait seconds',
+    'rest.shutdown.send': 'Shutdown through REST',
     'panel.backup': 'BACKUP',
     'panel.backup.desc': 'Manual & scheduled backups. Stored in data/backups/',
     'panel.mods': 'MOD MANAGER',
@@ -1044,11 +1078,11 @@ function tunnelStateLabel(tunnel) {
   const labels = currentLang === 'zh' ? {
     absent:'未检测到客户端', starting:'正在建立连接', 'local-not-ready':'本地 UDP 未监听',
     'network-unobserved':'本地网络证据未观察到', 'control-disconnected':'节点控制连接断开', ready:'隧道已启动，等待外部验证',
-    degraded:'隧道已启动，但数据连接异常', verified:'外部数据连接已验证'
+    degraded:'隧道已启动，但数据连接异常', verified:'外部数据连接已验证', disabled:'未配置隧道 provider'
   } : {
     absent:'client not detected', starting:'connecting', 'local-not-ready':'local UDP not ready',
     'network-unobserved':'local network evidence was not observed', 'control-disconnected':'node control disconnected', ready:'proxy ready; external check pending',
-    degraded:'proxy ready; data connection degraded', verified:'external data connection verified'
+    degraded:'proxy ready; data connection degraded', verified:'external data connection verified', disabled:'no tunnel provider configured'
   };
   return labels[tunnel.state] || tunnel.state || (currentLang === 'zh' ? '未知' : 'unknown');
 }
@@ -1061,7 +1095,7 @@ function renderTunnelProof(tunnel) {
   $('tunnelEndpoint').textContent = tunnel.externalEndpoint || (zh ? '未从日志识别远程地址' : 'remote endpoint not found');
   const steps = [
     [tunnel.localUdpReady, zh ? `本地 UDP ${tunnel.localPort || 8211} 正在监听` : `Local UDP ${tunnel.localPort || 8211} is listening`, 'localUdp'],
-    [tunnel.processDetected, zh ? 'SakuraFrp/frpc 进程存在' : 'SakuraFrp/frpc process detected', 'process'],
+    [tunnel.processDetected, zh ? `${tunnel.provider || '隧道'} 进程存在` : `${tunnel.provider || 'Tunnel'} process detected`, 'process'],
     [tunnel.controlConnected, zh ? 'frpc 到节点的 TCP 控制连接已建立' : 'frpc node control connection established', 'control'],
     [tunnel.proxyReady, zh ? '服务日志确认 UDP 隧道启动成功' : 'Service log confirms proxy ready', 'proxy'],
     [tunnel.recentExternalTraffic, zh ? '检测到成功的外部数据连接' : 'Successful external data traffic detected', 'traffic']
@@ -1522,6 +1556,7 @@ function renderDashboard(s) {
 
   const rest = services.rest || {};
   const rcon = services.rcon || {};
+  const management = services.management || {};
   const tunnel = services.tunnel || {};
   const backup = services.backup || {};
   const dailyLogs = services.dailyLogArchive || {};
@@ -1535,7 +1570,7 @@ function renderDashboard(s) {
   $('serviceList').innerHTML = [
     serviceRow('REST API', rest.reachable ? `${zh?'可访问':'reachable'} · ${rest.port || '—'}` : (zh?'不可访问':'unreachable'), rest.reachable ? 'ok' : 'danger'),
     serviceRow('RCON', rcon.configured ? `${rcon.port || '—'} · localhost` : (zh?'已禁用':'disabled'), rcon.configured ? 'warn' : ''),
-    serviceRow('SakuraFrp', tunnelStateLabel(tunnel), tunnel.level || 'danger'),
+    serviceRow(zh ? `隧道 · ${tunnel.provider || 'none'}` : `Tunnel · ${tunnel.provider || 'none'}`, tunnelStateLabel(tunnel), tunnel.state === 'disabled' ? 'warn' : (tunnel.level || 'danger')),
     serviceRow(zh?'定时备份':'Backups', backup.configured ? `${backup.count || 0} · ${backup.totalSizeMb || 0} MB` : (zh?'已禁用':'disabled'), backup.configured ? 'ok' : 'warn'),
     serviceRow(zh?'每日日志':'Daily logs', dailyLogs.running
       ? `${zh?'运行中':'running'} · ${dailyLogs.count || 0} TXT`
@@ -1543,6 +1578,8 @@ function renderDashboard(s) {
     serviceRow('Mod Manager', mods.enabled ? (zh?'启用':'enabled') : `${zh?'预留/禁用':'reserved/disabled'} · ${mods.installed || 0}`, ''),
     serviceRow(isWin ? (zh?'运行时健康':'Runtime health') : (zh?'容器健康':'Container health'), `${c.health || 'unknown'}${c.oomKilled ? ' · OOM' : ''}`, c.health === 'healthy' && !c.oomKilled ? 'ok' : 'warn')
   ].join('');
+  const legacyRconBlock = $('legacyRconBlock');
+  if (legacyRconBlock) legacyRconBlock.style.display = rcon.configured ? '' : 'none';
   renderTunnelProof(tunnel);
 
   const save = storage.saves || {};
@@ -2179,6 +2216,45 @@ function renderRconCmds() {
   });
 }
 renderRconCmds();
+
+async function runRestManagement(operation, payload, confirmation) {
+  if (confirmation) {
+    const confirmed = await showModal(t(confirmation.title), t(confirmation.body));
+    if (!confirmed) return;
+  }
+  const status = $('restManagementStatus');
+  if (status) status.textContent = currentLang === 'zh' ? '正在请求 REST…' : 'Sending REST request…';
+  try {
+    const result = await api('/api/management', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ operation, ...payload })
+    });
+    if (status) status.textContent = result.ok
+      ? (currentLang === 'zh' ? `REST 操作已完成：${operation}` : `REST operation completed: ${operation}`)
+      : (result.error || t('common.error'));
+    if (result.ok) { toast(currentLang === 'zh' ? 'REST 操作已完成' : 'REST operation completed', 'success'); await loadDashboard(); }
+  } catch (error) {
+    if (status) status.textContent = error.message;
+    toast(error.message, 'error', t('common.networkError'));
+  }
+}
+
+$('btnRestAnnounce').addEventListener('click', () => {
+  const message = $('restAnnouncement').value.trim();
+  if (!message) { $('restAnnouncement').focus(); return; }
+  runRestManagement('announce', { message });
+});
+$('btnRestPlayerAction').addEventListener('click', () => {
+  const userid = $('restPlayerId').value.trim();
+  const operation = $('restPlayerAction').value;
+  const message = $('restPlayerMessage').value.trim();
+  if (!userid) { $('restPlayerId').focus(); return; }
+  runRestManagement(operation, { userid, message }, { title: 'modal.rcon.player.title', body: 'modal.rcon.player.body' });
+});
+$('btnRestShutdown').addEventListener('click', () => {
+  const waittime = Math.max(0, Math.min(600, Number($('restShutdownWait').value || 30)));
+  runRestManagement('shutdown', { waittime, message: currentLang === 'zh' ? '服务器将按本地控制台请求停服。' : 'Server shutdown requested by the local console.' }, { title: 'modal.rcon.runtime.title', body: 'modal.rcon.runtime.body' });
+});
 
 function rconConfirmationFor(command) {
   const verb = String(command || '').trim().split(/\s+/, 1)[0].toLowerCase();

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
@@ -20,16 +21,6 @@ internal sealed class ConsoleHostForm : Form
 {
     private const int StartupTimeoutSeconds = 30;
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(2);
-    private const string WelcomeMessage =
-        "欢迎使用 Palworld Server Console。\r\n\r\n" +
-        "第一次使用请按这个顺序：\r\n" +
-        "1. 准备 PalworldServer 项目文件夹；\r\n" +
-        "2. 确认里面有 .env、settings-panel.ps1、docker-compose.yml 和 web\\index.html；\r\n" +
-        "3. 如果还没有 Windows 原生服务端，先双击项目根目录的 install-windows-server.bat；首次下载约 5 GB，需要等待；\r\n" +
-        "4. 点击窗口左上角“选择服务器目录…”。\r\n\r\n" +
-        "选择后，应用会连接或启动本机 Web Console。Docker 与 Windows 原生服务端不能同时运行。" +
-        "本应用只提供控制台，不包含 Palworld 游戏文件或世界存档。";
-
     private readonly string[] _arguments;
     private readonly HttpClient _httpClient = new() { Timeout = ProbeTimeout };
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill, Visible = false };
@@ -41,25 +32,33 @@ internal sealed class ConsoleHostForm : Form
     };
     private readonly StatusStrip _status = new();
     private readonly ToolStripStatusLabel _statusLabel = new("正在准备本地控制台…");
+    private readonly ToolStripButton _chooseProject = new();
+    private readonly ToolStripButton _reload = new();
+    private readonly ToolStripButton _openBrowser = new();
+    private readonly ToolStripDropDownButton _language = new();
+    private bool _english;
     private string? _projectRoot;
     private Uri? _consoleUri;
 
     public ConsoleHostForm(string[] arguments)
     {
         _arguments = arguments;
-        Text = "Palworld Server Console";
+        _english = LoadLanguagePreference();
+        Text = T("Palworld 本地服务器控制台", "Palworld Local Server Console");
         MinimumSize = new Size(980, 700);
         StartPosition = FormStartPosition.CenterScreen;
-        Icon = SystemIcons.Application;
+        Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
 
         var menu = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden };
-        var chooseProject = new ToolStripButton("选择服务器目录…");
-        chooseProject.Click += async (_, _) => await ChooseProjectAsync();
-        var reload = new ToolStripButton("重新加载面板");
-        reload.Click += async (_, _) => await LoadConsoleAsync(requireSelection: false);
-        var openBrowser = new ToolStripButton("在浏览器中打开");
-        openBrowser.Click += (_, _) => OpenInBrowser(_consoleUri);
-        menu.Items.AddRange([chooseProject, reload, new ToolStripSeparator(), openBrowser]);
+        _chooseProject.Click += async (_, _) => await ChooseProjectAsync();
+        _reload.Click += async (_, _) => await LoadConsoleAsync(requireSelection: false);
+        _openBrowser.Click += (_, _) => OpenInBrowser(_consoleUri);
+        _language.DropDownItems.Add(new ToolStripMenuItem("中文") { Tag = false });
+        _language.DropDownItems.Add(new ToolStripMenuItem("English") { Tag = true });
+        foreach (ToolStripMenuItem item in _language.DropDownItems)
+            item.Click += (_, _) => SetLanguage(item.Tag is bool english && english);
+        menu.Items.AddRange([_chooseProject, _reload, new ToolStripSeparator(), _openBrowser, _language]);
+        ApplyLanguage();
 
         _status.Items.Add(_statusLabel);
         Controls.Add(_webView);
@@ -81,18 +80,67 @@ internal sealed class ConsoleHostForm : Form
 
     private static string SavedRootPath => Path.Combine(AppDataDirectory, "settings.json");
 
+    private static string LanguagePath => Path.Combine(AppDataDirectory, "language.txt");
+
+    private string T(string zh, string en) => _english ? en : zh;
+
+    private static bool LoadLanguagePreference()
+    {
+        try
+        {
+            if (File.Exists(LanguagePath)) return File.ReadAllText(LanguagePath).Trim().Equals("en", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (IOException) { }
+        return CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.Equals("en", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void SetLanguage(bool english)
+    {
+        _english = english;
+        Directory.CreateDirectory(AppDataDirectory);
+        File.WriteAllText(LanguagePath, english ? "en" : "zh");
+        ApplyLanguage();
+        ShowMessage(IsProjectRoot(_projectRoot) ? T("正在准备本地控制台…", "Preparing the local console…") : WelcomeMessage, error: false);
+    }
+
+    private void ApplyLanguage()
+    {
+        Text = T("Palworld 本地服务器控制台", "Palworld Local Server Console");
+        _chooseProject.Text = T("选择服务器目录…", "Choose project folder…");
+        _reload.Text = T("重新加载面板", "Reload console");
+        _openBrowser.Text = T("在浏览器中打开", "Open in browser");
+        _language.Text = T("语言", "Language");
+        _statusLabel.Text = T("正在准备本地控制台…", "Preparing the local console…");
+    }
+
+    private string WelcomeMessage => T(
+        "欢迎使用 Palworld 本地服务器控制台。\r\n\r\n" +
+        "第一次使用请按这个顺序：\r\n" +
+        "1. 解压完整发行包并运行 FIRST_RUN.bat；\r\n" +
+        "2. 确认项目目录有 .env、settings-panel.ps1、docker-compose.yml 和 web\\index.html；\r\n" +
+        "3. 如使用 Windows 原生服务端，先运行 install-windows-server.bat；\r\n" +
+        "4. 点击左上角“选择服务器目录…”。\r\n\r\n" +
+        "本应用只连接本机 Web Console，不包含 Palworld 游戏文件或世界存档。Docker 与 Windows 原生服务端不能同时运行。",
+        "Welcome to Palworld Local Server Console.\r\n\r\n" +
+        "First use:\r\n" +
+        "1. Extract the complete release bundle and run FIRST_RUN.bat;\r\n" +
+        "2. Confirm the project contains .env, settings-panel.ps1, docker-compose.yml, and web\\index.html;\r\n" +
+        "3. For Windows-native hosting, run install-windows-server.bat first;\r\n" +
+        "4. Click “Choose project folder…” in the upper-left toolbar.\r\n\r\n" +
+        "This host connects only to the local Web Console and does not include game files or world saves. Docker and Windows-native runtimes must not run together.");
+
     private async Task ChooseProjectAsync()
     {
         using var dialog = new FolderBrowserDialog
         {
-            Description = "选择包含 settings-panel.ps1 与 docker-compose.yml 的 PalworldServer 目录",
+            Description = T("选择包含 settings-panel.ps1 与 docker-compose.yml 的项目目录", "Choose a project folder containing settings-panel.ps1 and docker-compose.yml"),
             UseDescriptionForTitle = true,
             InitialDirectory = _projectRoot ?? Environment.CurrentDirectory,
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         if (!IsProjectRoot(dialog.SelectedPath))
         {
-            ShowMessage("这不是有效的 PalworldServer 项目文件夹。\r\n\r\n请选择同时包含以下文件的目录：\r\n.env\r\nsettings-panel.ps1\r\ndocker-compose.yml\r\nweb\\index.html\r\n\r\n如果没有 .env，请先复制 .env.example 为 .env，并设置至少 16 位的 ADMIN_PASSWORD。", error: true);
+            ShowMessage(T("这不是有效的项目文件夹。\r\n\r\n请选择同时包含以下文件的目录：\r\n.env\r\nsettings-panel.ps1\r\ndocker-compose.yml\r\nweb\\index.html\r\n\r\n如果没有 .env，请先运行 FIRST_RUN.bat 或 bootstrap-first-run.ps1。", "This is not a valid project folder.\r\n\r\nChoose a folder containing:\r\n.env\r\nsettings-panel.ps1\r\ndocker-compose.yml\r\nweb\\index.html\r\n\r\nIf .env is missing, run FIRST_RUN.bat or bootstrap-first-run.ps1 first."), error: true);
             return;
         }
         _projectRoot = Path.GetFullPath(dialog.SelectedPath);
@@ -114,13 +162,13 @@ internal sealed class ConsoleHostForm : Form
 
         try
         {
-            ShowMessage("正在连接本地 Web Console…", error: false);
+            ShowMessage(T("正在连接本地 Web Console…", "Connecting to the local Web Console…"), error: false);
             _consoleUri = await EnsureConsoleAsync(_projectRoot!);
             await EnsureWebViewAsync();
             _webView.Source = _consoleUri;
             _webView.Visible = true;
             _message.Visible = false;
-            _statusLabel.Text = $"已连接本地控制台：{_consoleUri.Host}:{_consoleUri.Port}。Docker 与 Windows 运行时均由同一受保护后端管理。";
+            _statusLabel.Text = T($"已连接本地控制台：{_consoleUri.Host}:{_consoleUri.Port}。Docker 与 Windows 运行时均由同一受保护后端管理。", $"Connected to the local console at {_consoleUri.Host}:{_consoleUri.Port}. Docker and Windows runtimes share the protected backend.");
         }
         catch (WebView2RuntimeNotFoundException)
         {
@@ -128,7 +176,7 @@ internal sealed class ConsoleHostForm : Form
         }
         catch (Exception error)
         {
-            ShowMessage($"无法打开本地 Web Console。{Environment.NewLine}{Environment.NewLine}{error.Message}{Environment.NewLine}{Environment.NewLine}请按顺序检查：{Environment.NewLine}1. 项目目录中有 .env 且管理员密码已填写；{Environment.NewLine}2. Docker Desktop 已运行，或 Windows 原生服务端已经安装；{Environment.NewLine}3. 没有同时启动 Docker 和 Windows 原生服务端。{Environment.NewLine}{Environment.NewLine}应用不会绕过运行时切换、保存或权限检查。", error: true);
+            ShowMessage(T($"无法打开本地 Web Console。{Environment.NewLine}{Environment.NewLine}{error.Message}{Environment.NewLine}{Environment.NewLine}请依次检查：{Environment.NewLine}1. 项目目录有 .env；{Environment.NewLine}2. Docker Desktop 已运行，或 Windows 原生服务端已经安装；{Environment.NewLine}3. 两种运行时没有同时启动。", $"The local Web Console could not be opened.{Environment.NewLine}{Environment.NewLine}{error.Message}{Environment.NewLine}{Environment.NewLine}Check that .env exists, the selected runtime dependency is ready, and Docker and Windows-native runtimes are not both running."), error: true);
         }
     }
 
@@ -151,7 +199,7 @@ internal sealed class ConsoleHostForm : Form
         start.ArgumentList.Add(scriptPath);
         if (Process.Start(start) is null)
         {
-            throw new InvalidOperationException("settings-panel.ps1 无法启动。");
+            throw new InvalidOperationException(T("settings-panel.ps1 无法启动。", "settings-panel.ps1 could not be started."));
         }
 
         var deadline = DateTimeOffset.UtcNow.AddSeconds(StartupTimeoutSeconds);
@@ -161,7 +209,7 @@ internal sealed class ConsoleHostForm : Form
             var endpoint = await FindReachableConsoleAsync(projectRoot);
             if (endpoint is not null) return endpoint;
         }
-        throw new TimeoutException($"Web Console 未在 {StartupTimeoutSeconds} 秒内就绪。请检查 data\\log-sources\\panel 下的本地日志。");
+        throw new TimeoutException(T($"Web Console 未在 {StartupTimeoutSeconds} 秒内就绪。请检查 data\\log-sources\\panel 下的本地日志。", $"The Web Console was not ready within {StartupTimeoutSeconds} seconds. Check the local logs under data\\log-sources\\panel."));
     }
 
     private async Task<Uri?> FindReachableConsoleAsync(string projectRoot)
@@ -230,18 +278,18 @@ internal sealed class ConsoleHostForm : Form
         }
         catch (Exception error)
         {
-            ShowMessage($"无法打开浏览器：{error.Message}", error: true);
+            ShowMessage(T($"无法打开浏览器：{error.Message}", $"The browser could not be opened: {error.Message}"), error: true);
         }
     }
 
     private void ShowWebViewRuntimeHelp()
     {
         const string runtimeUrl = "https://developer.microsoft.com/microsoft-edge/webview2/";
-        ShowMessage("未检测到 Microsoft Edge WebView2 Runtime。请安装 Evergreen Runtime 后重新打开此应用。应用和服务器均未被修改。", error: true);
-        _statusLabel.Text = "需要 Microsoft Edge WebView2 Runtime。";
+        ShowMessage(T("未检测到 Microsoft Edge WebView2 Runtime。请安装 Evergreen Runtime 后重新打开此应用。应用和服务器均未被修改。", "Microsoft Edge WebView2 Runtime was not found. Install the Evergreen Runtime and reopen this application. No application or server files were changed."), error: true);
+        _statusLabel.Text = T("需要 Microsoft Edge WebView2 Runtime。", "Microsoft Edge WebView2 Runtime is required.");
         var result = MessageBox.Show(this,
-            "需要 Microsoft Edge WebView2 Runtime 才能嵌入本地控制台。是否在默认浏览器中打开官方安装页？",
-            "缺少 WebView2 Runtime", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+            T("需要 Microsoft Edge WebView2 Runtime 才能嵌入本地控制台。是否在默认浏览器中打开官方安装页？", "Microsoft Edge WebView2 Runtime is required to embed the local console. Open the official download page?"),
+            T("缺少 WebView2 Runtime", "WebView2 Runtime missing"), MessageBoxButtons.YesNo, MessageBoxIcon.Information);
         if (result == DialogResult.Yes) OpenInBrowser(new Uri(runtimeUrl));
     }
 
@@ -249,7 +297,7 @@ internal sealed class ConsoleHostForm : Form
     {
         _message.Text = message;
         _message.ForeColor = error ? Color.Firebrick : SystemColors.ControlText;
-        _statusLabel.Text = error ? "桌面宿主未连接；服务器状态没有被此操作改变。" : "正在准备本地控制台…";
+        _statusLabel.Text = error ? T("桌面宿主未连接；服务器状态没有被此操作改变。", "Desktop host is not connected; server state was not changed.") : T("正在准备本地控制台…", "Preparing the local console…");
     }
 
     private static bool IsProjectRoot(string? path)

@@ -12,7 +12,7 @@ function Add-Error([string]$Message) { $errors.Add($Message) }
 function Add-Warning([string]$Message) { $warnings.Add($Message) }
 
 $requiredFiles = @(
-    ".env", ".env.example", "docker-compose.yml", "start-docker.bat", "start-windows.bat", "install-windows-server.bat",
+    ".env", ".env.example", "version.json", "docker-compose.yml", "start-docker.bat", "start-windows.bat", "install-windows-server.bat",
     "settings-panel.ps1", "web\index.html", "web\styles.css", "web\app.js", "package.json", "package-lock.json", "README.md", "README.en.md", "AGENTS.md",
     "desktop\PalworldConsole.Desktop\PalworldConsole.Desktop.csproj", "desktop\PalworldConsole.Desktop\Program.cs", "desktop\PalworldConsole.Desktop\packages.lock.json", "installer\PalworldServerConsole.wxs", "docs\desktop-app.md", "docs\quick-start.md", "docs\social-media-copy.md",
     "CHANGELOG.md", "docs\versioning-and-releases.md", "docs\compatibility.md",
@@ -22,12 +22,19 @@ $requiredFiles = @(
     "scripts\compare-save-integrity.ps1",
     "scripts\settings-catalog.ps1", "scripts\ensure-win-management-firewall.ps1", "scripts\ui-smoke.cjs", "scripts\test-i18n-parity.cjs", "scripts\build-desktop-app.ps1", "scripts\test-desktop-host.ps1", "scripts\test-desktop-installer.ps1", "scripts\test-windows-installer-bat.ps1",
     "scripts\test-player-command-picker.cjs", "scripts\test-console-guided-actions.cjs", "scripts\test-compare-save-integrity.cjs", "scripts\test-runtime-orchestration-contract.ps1", "scripts\test-runtime-common-behavior.ps1",
+    "scripts\test-management-network-contract.ps1",
     "scripts\daily-log-collector.ps1", "scripts\player-session-times.ps1", "scripts\test-player-session-times.ps1",
     "scripts\audit-public-release.ps1", "scripts\test-host-prerequisites.ps1", "scripts\test-web-console-boundary.ps1",
+    "scripts\management-api.ps1", "scripts\networking.ps1", "scripts\tunnel-provider.ps1", "scripts\apply-preset.ps1",
+    "scripts\bootstrap-first-run.ps1", "scripts\export-support-bundle.ps1", "scripts\build-release-bundle.ps1",
+    "scripts\get-project-version.ps1", "scripts\test-version-consistency.ps1", "scripts\bump-version.ps1",
     "scripts\mod-manager.ps1", "mods\manifest.json",
     "mods\manifest.schema.json", "mods\README.md",
     "docs\official-palworld-server-standards.md", "docs\web-console-capabilities.md", "docs\operator-workflows.md", "docs\public-release-readiness.md",
-    "docs\log-and-tunnel-diagnostics.md"
+    "docs\log-and-tunnel-diagnostics.md", "docs\architecture.md", "docs\getting-started\install.md",
+    "docs\getting-started\networking.md", "docs\getting-started\saves.md", "docs\user-guide\daily-operations.md",
+    "docs\troubleshooting\README.md", "presets\vanilla.env", "presets\casual-small-server.env", "presets\performance-conservative.env",
+    "providers\none\README.md", "providers\generic-process\README.md", "providers\sakurafrp\README.md"
 )
 foreach ($relativePath in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $projectDir $relativePath) -PathType Leaf)) {
@@ -109,6 +116,7 @@ if (Test-Path -LiteralPath $envPath -PathType Leaf) {
 foreach ($relativeScript in @("settings-panel.ps1", "scripts\settings-catalog.ps1",
     "scripts\normalize-env.ps1", "scripts\mod-manager.ps1", "scripts\daily-log-collector.ps1", "scripts\player-session-times.ps1", "scripts\start-web-console.ps1", "scripts\test-player-session-times.ps1", "scripts\test-runtime-orchestration-contract.ps1", "scripts\test-runtime-common-behavior.ps1",
     "scripts\audit-public-release.ps1", "scripts\test-host-prerequisites.ps1", "scripts\test-web-console-boundary.ps1", "scripts\build-desktop-app.ps1", "scripts\test-desktop-host.ps1", "scripts\test-desktop-installer.ps1", "scripts\test-windows-installer-bat.ps1",
+    "scripts\management-api.ps1", "scripts\networking.ps1", "scripts\tunnel-provider.ps1", "scripts\apply-preset.ps1", "scripts\bootstrap-first-run.ps1", "scripts\export-support-bundle.ps1", "scripts\build-release-bundle.ps1", "scripts\get-project-version.ps1", "scripts\test-version-consistency.ps1", "scripts\bump-version.ps1", "scripts\test-management-network-contract.ps1",
     "scripts\runtime-common.ps1", "scripts\docker-runtime.ps1", "scripts\compile-settings.ps1",
     "scripts\win-runtime.ps1", "scripts\install-win-server.ps1",
     "scripts\switch-runtime.ps1", "scripts\restore-snapshot.ps1",
@@ -153,6 +161,20 @@ if (Test-Path -LiteralPath $catalogScript -PathType Leaf) {
         if ([int]$catalog["BASE_CAMP_MAX_NUM_IN_GUILD"].max -ne 10 -or
             [int]$catalog["BASE_CAMP_WORKER_MAX_NUM"].max -ne 50) {
             Add-Error "Official base and worker limits are not enforced by the catalog."
+        }
+        $templatePath = Join-Path $projectDir ".env.example"
+        $templateValues = @{}
+        foreach ($line in [System.IO.File]::ReadAllLines($templatePath)) {
+            if ($line -match "^\s*([^#=]+)=(.*)$") {
+                $templateValues[$matches[1].Trim()] = $matches[2].Trim().Trim('"').Trim("'")
+            }
+        }
+        foreach ($key in @("TZ", "UPDATE_ON_BOOT", "BACKUP_CRON_EXPRESSION", "OLD_BACKUP_DAYS", "REST_API_ENABLED", "RCON_ENABLED")) {
+            if (-not $templateValues.ContainsKey($key)) {
+                Add-Error ".env.example is missing catalog default key: $key"
+            } elseif ([string]$templateValues[$key] -cne [string]$catalog[$key].default) {
+                Add-Error ".env.example and settings catalog defaults differ for $key."
+            }
         }
     } catch {
         Add-Error "Settings catalog could not be loaded: $($_.Exception.Message)"
@@ -229,12 +251,16 @@ if (Test-Path -LiteralPath $composePath) {
     if ($composeText -notmatch "thijsvanloef/palworld-server-docker@sha256:[0-9a-f]{64}") {
         Add-Error "Container image is not pinned by digest."
     }
-    if ($composeText -notmatch "host_ip:\s*127\.0\.0\.1") {
-        Add-Error "RCON is not explicitly bound to 127.0.0.1."
+    if ($composeText -notmatch "target:\s*\$\{REST_API_PORT:-8212\}" -or
+        $composeText -notmatch "host_ip:\s*127\.0\.0\.1") {
+        Add-Error "REST management port is not explicitly bound to 127.0.0.1."
     }
-    if ($composeText -notmatch 'target:\s*\$\{PORT:-8211\}' -or
-        $composeText -notmatch 'target:\s*\$\{RCON_PORT:-25575\}') {
-        Add-Error "Compose port mappings do not follow the editable PORT/RCON_PORT settings."
+    if ($composeText -notmatch 'target:\s*\$\{PORT:-8211\}') {
+        Add-Error "Compose game port mapping does not follow the editable PORT setting."
+    }
+    if ($composeText -match 'target:\s*\$\{RCON_PORT:-25575\}' -and
+        $composeText -notmatch 'host_ip:\s*127\.0\.0\.1') {
+        Add-Error "Any Compose RCON mapping must be explicitly bound to 127.0.0.1."
     }
     if ($composeText -notmatch "stop_grace_period:\s*2m") {
         Add-Error "stop_grace_period is not set to 2m."
@@ -494,6 +520,19 @@ if (Test-Path -LiteralPath $runtimeCommonBehaviorTest -PathType Leaf) {
         }
     } catch {
         Add-Error "Runtime-common behavior regression failed: $($_.Exception.Message)"
+    }
+}
+
+$managementNetworkContract = Join-Path $projectDir 'scripts\test-management-network-contract.ps1'
+if (Test-Path -LiteralPath $managementNetworkContract -PathType Leaf) {
+    try {
+        $LASTEXITCODE = 0
+        & $managementNetworkContract
+        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            Add-Error "Management/network source contract failed with exit code $LASTEXITCODE."
+        }
+    } catch {
+        Add-Error "Management/network source contract failed: $($_.Exception.Message)"
     }
 }
 

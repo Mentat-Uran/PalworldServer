@@ -31,3 +31,7 @@ source-only, Docker runtime, or Windows-native runtime.
 
 List commands and bounded outputs. Do not claim a backup, tunnel, or runtime
 operation succeeded unless its acceptance criteria were actually met.
+
+If possible, attach the output of `scripts\export-support-bundle.ps1`. Do not
+attach `.env`, saves, backups, raw logs, player identifiers, public addresses,
+tunnel addresses, or credentials.
