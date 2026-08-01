@@ -11,6 +11,19 @@ tunnel, backup restore, or remote player connection has been verified.
 
 No unreleased changes.
 
+## [0.1.1] - 2026-08-02
+
+### Fixed
+
+- Explicitly pin the desktop host's private `Microsoft.NET.ILLink.Tasks` build
+  dependency to 8.0.28 so locked restore is stable across current .NET SDK
+  patch versions.
+- Replace the player-session test's Windows-only `System.Web.Extensions` JSON
+  dependency with the built-in PowerShell JSON cmdlets, keeping the same
+  privacy-preserving data shape in Windows PowerShell 5.1 and PowerShell 7.
+- Run the player-session regression explicitly in both supported Windows
+  PowerShell hosts in CI.
+
 ## [0.1.0] - 2026-08-02
 
 ### Added

@@ -41,6 +41,10 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund
           node -e "require.resolve('playwright-core'); console.log('PLAYWRIGHT_CORE=resolved')"
 
+      - name: Run player-session regression under Windows PowerShell 5.1
+        shell: powershell
+        run: .\scripts\test-player-session-times.ps1
+
       - name: Run source contracts
         shell: pwsh
         run: |

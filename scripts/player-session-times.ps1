@@ -40,13 +40,44 @@ function Get-PlayerIdHash($UserId) {
     }
 }
 
+function ConvertTo-PlayerTimesDictionary($Value) {
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [System.Collections.IDictionary]) {
+        $dictionary = [ordered]@{}
+        foreach ($key in $Value.Keys) {
+            $dictionary[[string]$key] = ConvertTo-PlayerTimesDictionary $Value[$key]
+        }
+        return $dictionary
+    }
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        $items = New-Object System.Collections.Generic.List[object]
+        foreach ($item in $Value) {
+            [void]$items.Add((ConvertTo-PlayerTimesDictionary $item))
+        }
+        return ,$items.ToArray()
+    }
+    if ($Value.PSObject.Properties.Count -gt 0 -and $Value -isnot [string]) {
+        $dictionary = [ordered]@{}
+        foreach ($property in $Value.PSObject.Properties) {
+            $dictionary[$property.Name] = ConvertTo-PlayerTimesDictionary $property.Value
+        }
+        return $dictionary
+    }
+    return $Value
+}
+
+function ConvertFrom-PlayerTimesJson([string]$Json) {
+    $convertFromJson = Get-Command ConvertFrom-Json -CommandType Cmdlet -ErrorAction Stop
+    if ($convertFromJson.Parameters.ContainsKey('AsHashtable')) {
+        return ConvertFrom-Json -InputObject $Json -AsHashtable
+    }
+    return ConvertTo-PlayerTimesDictionary ($Json | ConvertFrom-Json)
+}
+
 function Get-PlayerTimesData {
     if (Test-Path -LiteralPath $playerTimesFile -PathType Leaf) {
         try {
-            Add-Type -AssemblyName System.Web.Extensions -ErrorAction Stop
-            $serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
-            $serializer.MaxJsonLength = 4MB
-            $data = $serializer.DeserializeObject([System.IO.File]::ReadAllText($playerTimesFile))
+            $data = ConvertFrom-PlayerTimesJson ([System.IO.File]::ReadAllText($playerTimesFile))
             if ($data -is [System.Collections.IDictionary]) { return $data }
         } catch {
             # Do not replace an unreadable accounting file. The next successful
@@ -60,10 +91,7 @@ function Get-PlayerTimesData {
 function Save-PlayerTimesData($Data) {
     $dir = Split-Path -Parent $playerTimesFile
     [System.IO.Directory]::CreateDirectory($dir) | Out-Null
-    Add-Type -AssemblyName System.Web.Extensions -ErrorAction Stop
-    $serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
-    $serializer.MaxJsonLength = 4MB
-    $json = $serializer.Serialize($Data)
+    $json = $Data | ConvertTo-Json -Depth 20 -Compress
     $tempPath = "$playerTimesFile.tmp.$PID"
     $backupPath = "$playerTimesFile.bak.$PID"
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
