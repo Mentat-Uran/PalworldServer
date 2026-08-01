@@ -38,7 +38,7 @@ if (-not $git) {
 
 foreach ($required in @(
     'LICENSE', 'package.json', 'package-lock.json', 'README.md', 'README.en.md', 'CONTRIBUTING.md', 'SECURITY.md', 'CHANGELOG.md',
-    'desktop/PalworldConsole.Desktop/PalworldConsole.Desktop.csproj', 'desktop/PalworldConsole.Desktop/Program.cs', 'desktop/PalworldConsole.Desktop/packages.lock.json', 'installer/PalworldServerConsole.wxs', 'docs/desktop-app.md',
+    'desktop/PalworldConsole.Desktop/PalworldConsole.Desktop.csproj', 'desktop/PalworldConsole.Desktop/Program.cs', 'desktop/PalworldConsole.Desktop/packages.lock.json', 'installer/PalworldServerConsole.wxs', 'install-windows-server.bat', 'docs/desktop-app.md', 'docs/quick-start.md', 'docs/social-media-copy.md', 'scripts/test-windows-installer-bat.ps1',
     'docs/public-release-readiness.md', '.github/PULL_REQUEST_TEMPLATE.md',
     '.github/ISSUE_TEMPLATE/bug_report.md', '.github/ISSUE_TEMPLATE/feature_request.md'
 )) {

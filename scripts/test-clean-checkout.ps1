@@ -91,7 +91,8 @@ try {
             'scripts\test-player-command-picker.cjs',
             'scripts\test-console-guided-actions.cjs',
             'scripts\test-compare-save-integrity.cjs',
-            'scripts\test-desktop-installer.ps1'
+            'scripts\test-desktop-installer.ps1',
+            'scripts\test-windows-installer-bat.ps1'
         )) {
             $testPath = Join-Path $workspace $relativeTest
             if ([System.IO.Path]::GetExtension($testPath) -eq '.ps1') {

@@ -11,8 +11,8 @@ separate in release notes and incident reports.
 ## Version format
 
 Source releases use semantic versioning and annotated Git tags in the form
-`vMAJOR.MINOR.PATCH`. The first public release will be `v0.1.0` unless a release
-owner deliberately records a different baseline before tagging it.
+`vMAJOR.MINOR.PATCH`. The current public baseline is `v0.1.1`; future releases
+must record their changes before tagging them.
 
 - **MAJOR**: an incompatible operator workflow, configuration, REST/Web Console,
   runtime-switch, or data-layout change.

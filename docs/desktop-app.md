@@ -5,6 +5,25 @@ local Web Console. It embeds the same web frontend in Microsoft Edge WebView2;
 it does not create a second Docker, Windows-runtime, REST, RCON, or settings
 backend.
 
+## First use in three steps
+
+1. Install the MSI, or extract the portable ZIP and run
+   `PalworldServerConsole.exe`.
+2. Keep the PalworldServer project directory in a known location. It must
+   contain `.env`, `settings-panel.ps1`, `docker-compose.yml`, and
+   `web\index.html`.
+3. In the desktop window, click **选择服务器目录…** and select that project
+   directory. The application remembers the selection for the current Windows
+   user.
+
+The package is the control panel, not the game-server installer. If you are
+starting from an empty Windows machine, install WebView2 Runtime and
+double-click `install-windows-server.bat` in the project root. It downloads
+SteamCMD and about 5 GB of Windows-native Palworld server files, then prepares
+the configuration. Docker Desktop is optional; use `start-docker.bat` if you
+prefer the container path. The desktop package does not include game files,
+saves, Docker Desktop, or WebView2 Runtime.
+
 ## What it manages
 
 After selecting a valid PalworldServer project directory, the application:
@@ -28,7 +47,7 @@ NuGet registry for the first restore.
 ```powershell
 .\scripts\test-desktop-host.ps1
 .\scripts\test-desktop-installer.ps1
-.\scripts\build-desktop-app.ps1 -SelfContained -Msi -Zip -Version 0.1.0
+.\scripts\build-desktop-app.ps1 -SelfContained -Msi -Zip -Version 0.1.1
 ```
 
 The published application is written under `output\desktop-app\`; output is
