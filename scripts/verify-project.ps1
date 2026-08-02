@@ -25,7 +25,7 @@ $requiredFiles = @(
     "scripts\compare-save-integrity.ps1",
     "scripts\settings-catalog.ps1", "scripts\ensure-win-management-firewall.ps1", "scripts\ui-smoke.cjs", "scripts\test-i18n-parity.cjs", "scripts\build-desktop-app.ps1", "scripts\test-desktop-host.ps1", "scripts\test-desktop-installer.ps1", "scripts\test-windows-installer-bat.ps1", "scripts\test-first-run-bat.ps1", "scripts\test-powershell-encoding.ps1",
     "scripts\test-player-command-picker.cjs", "scripts\test-console-guided-actions.cjs", "scripts\test-compare-save-integrity.cjs", "scripts\test-runtime-orchestration-contract.ps1", "scripts\test-runtime-common-behavior.ps1", "scripts\test-recover-runtime-state-behavior.ps1", "scripts\test-env-migration.ps1",
-    "scripts\test-management-network-contract.ps1", "scripts\test-instance-isolation.ps1", "scripts\test-windows-rest-compatibility.ps1", "scripts\validate-launch-config.ps1", "scripts\test-launch-config.ps1", "scripts\test-tunnel-provider-catalog.ps1", "scripts\publish-local-release.ps1", "scripts\test-release-policy.ps1",
+    "scripts\test-management-network-contract.ps1", "scripts\test-instance-isolation.ps1", "scripts\test-windows-rest-compatibility.ps1", "scripts\validate-launch-config.ps1", "scripts\test-launch-config.ps1", "scripts\test-tunnel-provider-catalog.ps1", "scripts\test-log-archive-route.ps1", "scripts\publish-local-release.ps1", "scripts\test-release-policy.ps1",
     "scripts\daily-log-collector.ps1", "scripts\player-session-times.ps1", "scripts\test-player-session-times.ps1",
     "scripts\audit-public-release.ps1", "scripts\test-host-prerequisites.ps1", "scripts\test-web-console-boundary.ps1", "scripts\test-powershell-encoding.ps1", "scripts\test-win-installer-preflight.ps1",
     "scripts\management-api.ps1", "scripts\networking.ps1", "scripts\tunnel-provider.ps1", "scripts\apply-preset.ps1",
@@ -119,7 +119,7 @@ if (Test-Path -LiteralPath $envPath -PathType Leaf) {
 foreach ($relativeScript in @("settings-panel.ps1", "scripts\settings-catalog.ps1",
     "scripts\normalize-env.ps1", "scripts\mod-manager.ps1", "scripts\daily-log-collector.ps1", "scripts\player-session-times.ps1", "scripts\start-web-console.ps1", "scripts\test-player-session-times.ps1", "scripts\test-runtime-orchestration-contract.ps1", "scripts\test-runtime-common-behavior.ps1", "scripts\test-recover-runtime-state-behavior.ps1",
     "scripts\audit-public-release.ps1", "scripts\test-host-prerequisites.ps1", "scripts\test-web-console-boundary.ps1", "scripts\build-desktop-app.ps1", "scripts\test-desktop-host.ps1", "scripts\test-desktop-installer.ps1", "scripts\test-windows-installer-bat.ps1", "scripts\test-first-run-bat.ps1", "scripts\test-powershell-encoding.ps1", "scripts\test-win-installer-preflight.ps1",
-    "scripts\management-api.ps1", "scripts\networking.ps1", "scripts\tunnel-provider-catalog.ps1", "scripts\tunnel-provider.ps1", "scripts\apply-preset.ps1", "scripts\bootstrap-first-run.ps1", "scripts\export-support-bundle.ps1", "scripts\build-release-bundle.ps1", "scripts\publish-local-release.ps1", "scripts\test-release-policy.ps1", "scripts\get-project-version.ps1", "scripts\test-version-consistency.ps1", "scripts\bump-version.ps1", "scripts\test-management-network-contract.ps1", "scripts\test-instance-isolation.ps1", "scripts\test-windows-rest-compatibility.ps1", "scripts\validate-launch-config.ps1", "scripts\test-launch-config.ps1", "scripts\test-tunnel-provider-catalog.ps1",
+    "scripts\management-api.ps1", "scripts\networking.ps1", "scripts\tunnel-provider-catalog.ps1", "scripts\tunnel-provider.ps1", "scripts\apply-preset.ps1", "scripts\bootstrap-first-run.ps1", "scripts\export-support-bundle.ps1", "scripts\build-release-bundle.ps1", "scripts\publish-local-release.ps1", "scripts\test-release-policy.ps1", "scripts\get-project-version.ps1", "scripts\test-version-consistency.ps1", "scripts\bump-version.ps1", "scripts\test-management-network-contract.ps1", "scripts\test-instance-isolation.ps1", "scripts\test-windows-rest-compatibility.ps1", "scripts\validate-launch-config.ps1", "scripts\test-launch-config.ps1", "scripts\test-tunnel-provider-catalog.ps1", "scripts\test-log-archive-route.ps1",
     "scripts\runtime-common.ps1", "scripts\docker-runtime.ps1", "scripts\compile-settings.ps1", "scripts\measure-latency.ps1",
     "scripts\win-runtime.ps1", "scripts\install-win-server.ps1",
     "scripts\switch-runtime.ps1", "scripts\restore-snapshot.ps1",
@@ -395,6 +395,9 @@ if ($node) {
         if ($ciWorkflow -notmatch [regex]::Escape('.\scripts\test-recover-runtime-state-behavior.ps1')) {
             Add-Error 'Windows CI must run the disposable stale runtime-state recovery regression.'
         }
+        if ($ciWorkflow -notmatch [regex]::Escape('.\scripts\test-log-archive-route.ps1')) {
+            Add-Error 'Windows CI must run the direct log-archive route regression.'
+        }
         if ($ciWorkflow -notmatch [regex]::Escape('npm ci --ignore-scripts --no-audit --no-fund') -or
             $ciWorkflow -notmatch [regex]::Escape("require.resolve('playwright-core')")) {
             Add-Error 'Windows CI must install and resolve the declared browser-smoke library without running browser scripts.'
@@ -598,6 +601,19 @@ if (Test-Path -LiteralPath $recoverRuntimeStateBehaviorTest -PathType Leaf) {
         }
     } catch {
         Add-Error "Stale runtime-state recovery regression failed: $($_.Exception.Message)"
+    }
+}
+
+$logArchiveRouteTest = Join-Path $projectDir 'scripts\test-log-archive-route.ps1'
+if (Test-Path -LiteralPath $logArchiveRouteTest -PathType Leaf) {
+    try {
+        $LASTEXITCODE = 0
+        & $logArchiveRouteTest
+        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            Add-Error "Direct log-archive route regression failed with exit code $LASTEXITCODE."
+        }
+    } catch {
+        Add-Error "Direct log-archive route regression failed: $($_.Exception.Message)"
     }
 }
 

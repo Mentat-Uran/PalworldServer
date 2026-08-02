@@ -58,6 +58,7 @@ jobs:
           .\scripts\test-windows-rest-compatibility.ps1
           .\scripts\test-launch-config.ps1
           .\scripts\test-tunnel-provider-catalog.ps1
+          .\scripts\test-log-archive-route.ps1
           .\scripts\test-release-policy.ps1
           .\scripts\audit-public-release.ps1 -Strict
           .\scripts\test-version-consistency.ps1
