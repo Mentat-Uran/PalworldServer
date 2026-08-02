@@ -11,6 +11,45 @@ tunnel, backup restore, or remote player connection has been verified.
 
 No unreleased changes.
 
+## [0.2.1] - 2026-08-02
+
+### Fixed
+
+- Configuration migration now derives missing values from the safe public
+  template, preserves explicit operator settings, retains tunnel-provider keys,
+  and creates a private rollback backup before rewriting `.env`.
+- Cloud validation no longer restores or compiles the desktop host; formal
+  release builds, Authenticode signing, signature verification, and artifact
+  manifests are handled by the local release orchestrator for manual upload.
+- Windows-native startup now uses the current documented PalServer argument set,
+  keeps REST/RCON in the generated INI, and records the exact REST health
+  endpoint when readiness fails. Windows REST now has an explicit
+  `WINDOWS_REST_COMPATIBILITY_MODE` gate; the default remains `ini-only`, while
+  the legacy `-restapi` probe is opt-in and did not fix the current local build.
+  Windows health now falls back only to exact PalServer/game-UDP readiness;
+  save and selected player operations use explicitly enabled loopback RCON when
+  REST is absent, and runtime switching refuses to stop without a confirmed
+  management save.
+- Tunnel provider discovery and lifecycle validation now use public
+  `providers/*/provider.json` manifests instead of a central SakuraFrp allowlist;
+  custom process providers can be configured without editing the lifecycle
+  script.
+- Windows start launchers now run the read-only host prerequisite gate before
+  runtime switching, including Docker/WSL2, disk, memory, Windows-server, and
+  configured tunnel executable checks.
+- Docker container identity and the local runtime mutex now derive from the
+  optional `PROJECT_INSTANCE_ID`; the default remains `palworld-server`, while
+  separate project directories can use distinct identities and ports.
+
+## [0.2.0] - 2026-08-02
+
+### Added
+
+- Unified REST management operations, neutral defaults, explicit network modes,
+  optional tunnel providers, first-run bootstrap, support bundles, and a
+  complete source release bundle.
+- A single version source and local version-consistency validation.
+
 ## [0.1.2] - 2026-08-02
 
 ### Added
@@ -115,4 +154,4 @@ No unreleased changes.
 
 ## Release history
 
-The latest public release is [v0.1.1](https://github.com/Mentat-Uran/PalworldServer/releases/tag/v0.1.1).
+The latest public release is [v0.2.1](https://github.com/Mentat-Uran/PalworldServer/releases/tag/v0.2.1).

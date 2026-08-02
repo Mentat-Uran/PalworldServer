@@ -2,7 +2,7 @@
 
 - 日期：2026-07-28
 - 状态：已实施；2026-07-31 完成本地 Docker→Windows→Docker 回归与 Windows tar 备份实测。远端隧道、多人稳定性和生产恢复仍不在此结论内。
-- 上游文档：[README.md](file:///C:/Services/PalworldServer/README.md)、[docs/spec.md](file:///C:/Services/PalworldServer/docs/spec.md)、[AGENTS.md](file:///C:/Services/PalworldServer/AGENTS.md)
+- 上游文档：[README.md](../README.md)、[docs/architecture.md](architecture.md)、[AGENTS.md](../AGENTS.md)
 - 目标：在保留现有 Docker 部署完整可用的前提下，新增 Windows 原生 dedicated server 启动方式，两种运行时共享同一套 Web UI、管理 API、配置源、ENV、备份/日志体系和同一份世界存档，任一时刻只能运行其中一种。Windows 方式需支持原生服务端启动/停止、REST、配置应用、日志、备份、状态监控与受控的官方 Mod 管理。
 
 ## 0. 方案选型与关键决策
@@ -44,7 +44,7 @@
 ### 1.2 目标目录结构
 
 ```text
-C:\Services\PalworldServer\
+<project-root>\
 ├── data\
 │   ├── Pal\Saved\
 │   │   ├── Config\
@@ -100,7 +100,7 @@ C:\Services\PalworldServer\
 - 启动目标 runtime 前必须确认 `active=none` 或与目标一致
 - 任何 Stop 成功后才把 `active=none`，然后才允许 Start 另一个
 - 文件写入使用 `Set-Content -NoNewline` 加临时文件 + `Move-Item` 原子替换
-- 进程级互斥：使用 `New-Object System.Threading.Mutex($false, 'Global\PalworldServerRuntime')` 作为额外保护，避免并发 API 调用产生 race
+- 进程级互斥：使用 `PROJECT_INSTANCE_ID` 派生的 `Global\PalworldServerRuntime_<instance>` 命名 Mutex，避免同一项目的并发 API 调用产生 race，同时允许不同项目目录各自运行
 
 `runtime.state` 字段：
 
@@ -159,7 +159,7 @@ C:\Services\PalworldServer\
 |---|---|---|
 | 行结束符 | `\n` | `\r\n`（UE 在 Windows 下读取兼容 `\n`，但 `\r\n` 是规范） |
 | 路径分隔符 | 不出现（PalWorldSettings.ini 字段值不使用路径） | 不出现 |
-| `RCONEnabled` | 受 `RCON_ENABLED=true` 控制 | Windows 原生通过命令行 `-rcon -rpc -restapi` 启用，INI 内字段保持 `true` 即可 |
+| `RCONEnabled` | 受 `RCON_ENABLED=true` 控制 | Windows 原生由 INI 控制；RCON 仅在显式启用时使用 |
 
 结论：两份 INI 可共用一份中间结构（PSObject），渲染两遍时只切换行结束符。
 
@@ -222,7 +222,7 @@ Windows 原生服务端通过 SteamCMD 更新时可能：
 物理存档固定在：
 
 ```text
-C:\Services\PalworldServer\data\Pal\Saved\SaveGames\
+<project-root>\data\Pal\Saved\SaveGames\
 ```
 
 Docker 容器直接通过 bind mount 看到该路径（容器内 `/palworld/Pal/Saved/SaveGames/`），无需额外 junction。
@@ -230,7 +230,7 @@ Docker 容器直接通过 bind mount 看到该路径（容器内 `/palworld/Pal/
 Windows 服务端需要 junction：
 
 ```text
-C:\Services\PalworldServer\win-server\Pal\Saved\SaveGames  ←─ junction ─→  C:\Services\PalworldServer\data\Pal\Saved\SaveGames
+<project-root>\win-server\Pal\Saved\SaveGames  ←─ junction ─→  <project-root>\data\Pal\Saved\SaveGames
 ```
 
 #### 3.1.2 Junction 创建与修复
@@ -239,8 +239,8 @@ C:\Services\PalworldServer\win-server\Pal\Saved\SaveGames  ←─ junction ─�
 
 ```powershell
 function Assert-SaveGamesJunction {
-    $target = 'C:\Services\PalworldServer\data\Pal\Saved\SaveGames'
-    $link   = 'C:\Services\PalworldServer\win-server\Pal\Saved\SaveGames'
+    $target = '<project-root>\data\Pal\Saved\SaveGames'
+    $link   = '<project-root>\win-server\Pal\Saved\SaveGames'
 
     # 1. 确保物理存档目录存在
     if (-not (Test-Path $target)) {
@@ -400,10 +400,10 @@ install-win-server.ps1 [-Force]
      - 若存在且 -Force 未指定：校验版本并退出
      - 若存在且 -Force：备份当前 win-server\Pal\Saved\Config\，删除 win-server\
   2. 下载 SteamCMD：https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip
-  3. 解压到 C:\Services\PalworldServer\steamcmd\
+  3. 解压到 <project-root>\steamcmd\
   4. 运行 steamcmd\steamcmd.exe：
        login anonymous
-       force_install_dir C:\Services\PalworldServer\win-server
+       force_install_dir <project-root>\win-server
        app_update 2394010 validate
        quit
   5. 等待下载完成（Palworld dedicated server 约 5 GB）
@@ -425,14 +425,14 @@ install-win-server.ps1 [-Force]
 参考 Palworld 官方文档与 `win-server\PalServer.sh` 的 Linux 启动行：
 
 ```text
-PalServer.exe -port=8211 -queryport=27015 -useperfthreads -NoAsyncLoadingThread -UseMultithreadForLoad -rcon -rpc -restapi
+PalServer.exe -port=<PORT> -queryport=<QUERY_PORT> -logformat=text -log -abslog="<engine-log-path>"
 ```
 
-- `-port=8211`：游戏 UDP 端口，与 Docker 保持一致
-- `-queryport=27015`：服务器查询端口（不对外暴露，仅本机）
-- `-rcon -rpc -restapi`：启用 RCON 与 REST API，与 Docker 等价
-- REST API 端口固定 8212（Windows 服务端硬编码，不接受参数）
-- RCON 端口固定 25575（Windows 服务端硬编码）
+- `-port=<PORT>`：游戏 UDP 端口，来自本地 `.env`，与 Docker 保持一致
+- `-queryport=<QUERY_PORT>`：服务器查询端口，来自本地 `.env`
+- `-logformat=text`：使用本地配置的日志格式；`-log` 和 `-abslog` 用于尽力收集引擎输出
+- 当 `ENABLE_PERF_THREADING_ARGS=true` 时，追加官方的 `-useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS`，并可追加 `-NumberOfWorkerThreadsServer=X`
+- REST 的正式配置仍来自生成的 `PalWorldSettings.ini`；由于当前本地 Windows 构建在仅有 INI 时未打开 8212，默认 `WINDOWS_REST_COMPATIBILITY_MODE=ini-only`。`compat` 只是对旧构建的可选 `-restapi` 探测，当前本地构建即使加上该参数也没有打开 8212。RCON 仍只由 INI 控制，不再添加旧版 `-rcon`/`-rpc` 开关
 
 **REST/RCON 绑定地址**：Windows 服务端默认绑定 `0.0.0.0`，与 Docker 不同。必须通过 Windows 防火墙规则限制为 `127.0.0.1`：
 
@@ -466,35 +466,29 @@ function Get-RuntimeSettings { ... }
 
 ```text
 1. Assert-SaveGamesJunction
-2. 校验 win-server\PalServer.exe 存在
-3. 校验 win-server\Pal\Saved\Config\WindowsServer\PalWorldSettings.ini 存在
-4. 启动 PalServer.exe，使用 System.Diagnostics.Process
-   - WorkingDirectory: win-server\
-   - 重定向 stdout/stderr 到 data\log-sources\windows-server\<date>.log
-   - 记录 PID 到 runtime.state
-5. 等待 REST /health 接口响应（最多 120s，每 2s 轮询）
-6. 健康后更新 runtime.state active=windows、pid、startedAt、version
+2. 校验 `win-server\PalServer.exe` 和 WindowsServer 配置存在
+3. 从本地 `.env` 读取端口和 REST/RCON 开关，生成启动参数
+4. 使用 `System.Diagnostics.Process` 启动 `PalServer.exe`，以 `-abslog` 指向尽力而为的引擎日志；生命周期证据另写入 Windows runtime 日志
+5. 由 `switch-runtime.ps1` 轮询 REST `/info`；当前 Windows 构建若没有 REST，则用已核验的 PalServer 进程树和游戏 UDP 监听判断运行就绪，并在成功后更新 `runtime.state`
 ```
 
 #### 4.4.2 Stop
 
 ```text
-1. 读 runtime.state 获取 PID
-2. 调用 REST /stop（超时 30s）
-3. 若 REST 失败：调用 RCON shutdown
-4. 若 RCON 失败：Stop-Process -Id $pid -Force（最后手段）
-5. 等待进程退出，最多 120s
-6. 校验端口 8211/8212/25575 已释放
-7. 更新 runtime.state active=none
+1. 读取 `runtime.state`，并通过 CIM 精确核验 `PalServer.exe` 与 `PalServer-Win64-Shipping-Cmd.exe` 的完整路径和父子关系
+2. 优先调用 REST `/shutdown`（超时 30s）
+3. REST 不可用时先关闭已核验启动器窗口，再只对已核验的父子进程 PID 执行强制停止
+4. 等待并再次核验整个进程树已退出；发现残留或无法确认身份时返回失败，不报告为成功
+5. 由切换流程校验端口释放并更新 `runtime.state active=none`
 ```
 
 #### 4.4.3 Health
 
-调用 `http://127.0.0.1:8212/v1/api/health`，超时 5s。返回 `healthy` / `degraded` / `unreachable`。
+优先调用本地 REST `/v1/api/info`，超时 5s。`/info` 返回成功时为 `healthy`；若 REST 不可用，则必须同时核验 PalServer 启动器、游戏引擎进程及其拥有的游戏 UDP 监听，才可将运行就绪标记为 `healthy`。这种健康状态不代表管理 API 可用，结果会单独记录 `restAvailable` 与 RCON 回退状态。
 
 #### 4.4.4 Save
 
-优先 `POST http://127.0.0.1:8212/v1/api/save`，超时 30s；失败回退 RCON `Save` 命令。
+优先向本地 REST `/v1/api/save` 发起请求，超时 30s；失败时仅在 `ENABLE_LEGACY_RCON=true` 且本机 RCON 可用时回退到 `Save`。两条路径都失败时，切换流程拒绝停止活动运行时，并记录 `switch-save-failed`。
 
 #### 4.4.5 Players / Version / Settings / Logs
 
@@ -1188,9 +1182,9 @@ function Update-RuntimeState {
 
 - `README.md`：新增 Windows 启动方式、切换命令
 - `AGENTS.md`：记录决策与状态
-- `docs/spec.md`：保留为历史设计，不修改
+- `docs/architecture.md`：当前公开架构和安全边界
 - `docs/runtime-switch-design.md`（本文件）：标注实施进度
-- `docs/session-log.md`：记录每个里程碑的会话
+- `docs/change-archive.md`：公开变更记录
 
 ### 11.3.1 实施进度（截至 2026-07-28）
 
@@ -1281,7 +1275,7 @@ function Update-RuntimeState {
 
 ## 14. 开放问题（实施前需确认）
 
-1. **SteamCMD 安装路径**：默认 `C:\Services\PalworldServer\steamcmd\` 与 `win-server\`，是否需要可配置？
+1. **SteamCMD 安装路径**：默认使用项目目录下的 `steamcmd\` 与 `win-server\`，是否需要可配置？
 2. **Windows 防火墙规则命名**：建议 `Palworld Block REST 8212 Public` / `Palworld Block RCON 25575 Public`，是否与现有命名约定一致？
 3. **Mod 默认 `managerEnabled`**：Docker active 时设 false，Windows active 时设 true。是否需要在 manifest.json 中保留 `userOverride` 字段，允许用户强制禁用？
 4. **快照保留策略默认值**：Full 3 份 + 1GB / Light 10 份。是否需要 Web Console 设置页提供调整入口？
@@ -1396,6 +1390,6 @@ function Test-RuntimeSwitching {
 
 本文件描述完整的设计，可作为新会话实施的依据。任何实施过程中的偏差应通过以下方式处理：
 
-- 微小偏差（实现细节）：直接实施，记录到 session-log.md
+- 微小偏差（实现细节）：直接实施，记录到 change-archive.md
 - 中等偏差（接口/字段）：更新本文件 + 提交 git
 - 重大偏差（架构选择）：先回到设计讨论，确认后再实施

@@ -17,8 +17,12 @@ $panelSourceDir = Join-Path $projectDir "data\log-sources\panel"
 $incidentFile = Join-Path $projectDir "data\diagnostics\incidents.jsonl"
 $sakuraLogDir = "C:\ProgramData\SakuraFrpService\Logs"
 $pidFile = Join-Path $projectDir ".daily-log-collector.pid"
+$composeServiceName = "palworld-server"
 $containerName = "palworld-server"
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+. (Join-Path $PSScriptRoot 'management-api.ps1')
+$containerName = Get-ManagementContainerName -ProjectDirectory $projectDir
 
 # Player sessions are sampled by this independent collector rather than by an
 # open browser tab. A failed REST poll leaves existing sessions unchanged.
@@ -125,7 +129,7 @@ function Get-ContainerLogLines([datetime]$Day) {
     $endUtc = Convert-DayBoundaryToUtc $Day.AddDays(1)
     $since = $startUtc.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
     $until = $endUtc.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-    $arguments = "compose -f `"$composeFile`" logs --since `"$since`" --until `"$until`" --timestamps --no-color $containerName"
+    $arguments = "compose -f `"$composeFile`" logs --since `"$since`" --until `"$until`" --timestamps --no-color $composeServiceName"
     try {
         $result = Invoke-CapturedProcess "docker.exe" $arguments 90000
         if ($result.ExitCode -ne 0) {

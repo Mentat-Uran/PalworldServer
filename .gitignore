@@ -11,6 +11,7 @@ backups/
 *.log
 *.tmp
 output/
+project.json
 node_modules/
 .playwright-cli/
 
@@ -28,3 +29,4 @@ _*.js
 _*.cjs
 _*.txt
 _*.json
+!version.json

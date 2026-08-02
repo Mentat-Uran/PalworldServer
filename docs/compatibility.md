@@ -1,6 +1,6 @@
 # Compatibility contract
 
-Reviewed: 2026-07-31. This is a source and configuration compatibility contract,
+Reviewed: 2026-08-02. This is a source and configuration compatibility contract,
 not a claim that every listed combination has received a live-server test.
 
 ## Supported baseline
@@ -9,8 +9,8 @@ not a claim that every listed combination has received a live-server test.
 |---|---|---|
 | Host OS | 64-bit Windows 11 with PowerShell 5.1 or later | Windows static CI validates source on `windows-latest`; it does not start a server. |
 | Container path | Docker Desktop with WSL2 backend and Docker Compose v2 | Required by the selected Docker runtime. Docker Desktop releases are not broadly qualification-tested. |
-| Windows-native path | 64-bit Windows 11 Palworld Dedicated Server installed by `scripts/install-win-server.ps1` | A local Docker→Windows→Docker Full-snapshot regression reached native REST health, settings, empty-player response, SaveGames junction, firewall gate, and return to Docker. It is not tunnel, multiplayer-stability, or destructive-restore acceptance. |
-| Palworld dedicated server | Exact locally tested build: `v1.0.2.101103` | Docker and Windows native runtime both reported this version in the 2026-07-31 local regression. This is not a promise that later Palworld builds are compatible. Back up and review before every update. |
+| Windows-native path | 64-bit Windows 11 Palworld Dedicated Server installed by `scripts/install-win-server.ps1` | The current local build starts the game and query listeners and can expose legacy RCON when enabled; REST `/info` did not listen during the 2026-08-02 official-argument and RCON-disabled probes, so Windows-native management/switch acceptance remains unqualified. |
+| Palworld dedicated server | Docker build reported `v1.0.2.101103`; Windows install recorded Steam build `24466863` | These are separate local observations, not proof that the two runtimes are equivalent. This is not a promise that later Palworld builds are compatible. Back up and review before every update. |
 | Docker image | `thijsvanloef/palworld-server-docker@sha256:401d3eb5c053bcd72949e1ede8c4e38be5e5ad66be7272ac37940706df0aeb2f` only | Digest-pinned selected deployment; changing it requires a documented compatibility review and backup. |
 | Node.js | 22.x for CI; 22–24 for local tooling | CI uses Node 22. The optional browser smoke locks `playwright-core` in `package-lock.json`, installs it with `npm ci`, and connects to an installed local Chrome. |
 | Windows desktop host | Windows 11 x64; .NET 8 or self-contained x64 publish; Evergreen WebView2 Runtime | The host embeds only the local Web Console and uses its protected APIs for Docker/Windows controls. It does not add a remote listener or independently start a game runtime. Portable ZIP and current-user MSI packaging are source-supported; the MSI does not bundle WebView2. |
@@ -28,6 +28,34 @@ not a claim that every listed combination has received a live-server test.
 - New game-server builds and new container-image digests are unqualified until
   they have a recorded pre-update backup, static validation, and approved runtime
   evidence.
+- Windows-native REST management is unqualified for the currently installed
+  build until a local TCP listener and authenticated `/v1/api/info` response are
+  both observed. A running game port or legacy RCON listener is not sufficient.
+
+The Windows launcher now defaults to `WINDOWS_REST_COMPATIBILITY_MODE=ini-only`,
+matching the official configuration contract. `compat` remains an opt-in probe
+for older builds that may recognize the legacy `-restapi` switch; the current
+local build was tested with that switch and still did not open TCP 8212.
+
+The selected Windows behavior is fail-closed and layered: REST remains the
+primary management path; when REST is absent, explicitly enabled loopback RCON
+can handle `Save`, `Broadcast`, `KickPlayer`, `BanPlayer`, and `UnBanPlayer`.
+If neither REST nor RCON can confirm a save, runtime switching refuses to stop
+the active server. A healthy game UDP listener alone is not treated as a safe
+save or management channel.
+
+### Deferred next-window investigation
+
+The 2026-08-02 approved local probe started the Windows-native server with the
+current official argument set and verified the game/query UDP listeners and
+legacy RCON when enabled. REST was enabled in the generated INI, but TCP `8212`
+did not listen; disabling RCON separately produced the same REST result. The
+server was stopped, the original save and Windows INI were restored, and no
+runtime was left running. Continue from this evidence in a later maintenance
+window rather than repeatedly restarting the formal server in the current
+window. The next live probe should capture the generated INI hash, exact process
+command line, TCP listener state, and authenticated `/v1/api/info` result, then
+test the explicitly enabled RCON fallback once and restore the original save.
 
 ## Upgrade evidence required
 

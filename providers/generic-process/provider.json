@@ -1,0 +1,6 @@
+{
+  "id": "generic-process",
+  "displayName": "Generic process provider",
+  "kind": "process",
+  "autoDiscoverExecutables": []
+}

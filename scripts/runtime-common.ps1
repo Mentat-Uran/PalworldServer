@@ -1,9 +1,10 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 # Runtime common helpers: state file, mutex, incidents, switch log.
 # Loaded by docker-runtime.ps1, win-runtime.ps1, switch-runtime.ps1, settings-panel.ps1.
 # Keep PowerShell 5.1 compatible and ASCII-only.
 
 $projectDir = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'management-api.ps1')
 $statePath = Join-Path $projectDir 'data\runtime.state'
 $stateTmpPath = Join-Path $projectDir 'data\runtime.state.tmp'
 $incidentsPath = Join-Path $projectDir 'data\diagnostics\incidents.jsonl'
@@ -122,8 +123,11 @@ function Test-RuntimeSwitching {
 function Acquire-RuntimeMutex {
     param(
         [int]$TimeoutMs = 5000,
-        [ValidateNotNullOrEmpty()][string]$MutexName = 'Global\PalworldServerRuntime'
+        [string]$MutexName = ''
     )
+    if ([string]::IsNullOrWhiteSpace($MutexName)) {
+        $MutexName = Get-ManagementMutexName -ProjectDirectory $projectDir
+    }
     $mutex = New-Object System.Threading.Mutex($false, $MutexName)
     if (-not $mutex.WaitOne($TimeoutMs)) {
         $mutex.Dispose()
@@ -231,9 +235,55 @@ function Sync-ModManifestRuntime {
     }
 }
 
+function ConvertTo-RuntimeBoolean {
+    param([object]$Value, [bool]$Default = $false)
+    if ($null -eq $Value -or [string]::IsNullOrWhiteSpace([string]$Value)) { return $Default }
+    return ([string]$Value -match '^(?i:true|1|yes)$')
+}
+
+function Get-RuntimePortConfig {
+    <# Read only the non-secret port/enabled values needed by local probes. #>
+    $values = @{}
+    $envPath = Join-Path $projectDir '.env'
+    if (Test-Path -LiteralPath $envPath -PathType Leaf) {
+        foreach ($lineObject in [System.IO.File]::ReadAllLines($envPath)) {
+            $line = ([string]$lineObject).Trim()
+            if (-not $line -or $line.StartsWith('#')) { continue }
+            $separator = $line.IndexOf('=')
+            if ($separator -le 0) { continue }
+            $key = $line.Substring(0, $separator).Trim()
+            $value = $line.Substring($separator + 1).Trim()
+            if ($value.Length -ge 2 -and
+                (($value.StartsWith('"') -and $value.EndsWith('"')) -or
+                 ($value.StartsWith("'") -and $value.EndsWith("'")))) {
+                $value = $value.Substring(1, $value.Length - 2)
+            }
+            $values[$key] = $value
+        }
+    }
+
+    $readPort = {
+        param([string]$Key, [int]$Default)
+        $parsed = 0
+        if (-not [int]::TryParse([string]$values[$Key], [ref]$parsed) -or $parsed -lt 1 -or $parsed -gt 65535) {
+            return $Default
+        }
+        return $parsed
+    }
+    return [ordered]@{
+        gamePort = & $readPort 'PORT' 8211
+        restPort = & $readPort 'REST_API_PORT' 8212
+        rconPort = & $readPort 'RCON_PORT' 25575
+        restEnabled = ConvertTo-RuntimeBoolean $values['REST_API_ENABLED'] $true
+        rconEnabled = (ConvertTo-RuntimeBoolean $values['RCON_ENABLED'] $false) -or
+            (ConvertTo-RuntimeBoolean $values['ENABLE_LEGACY_RCON'] $false)
+    }
+}
+
 function Test-PortsReleased {
-    <# Returns $true when game/REST/RCON ports are NOT listening. #>
-    $ports = @(8211, 8212, 25575)
+    <# Returns $true when configured game/REST/RCON ports are NOT listening. #>
+    $config = Get-RuntimePortConfig
+    $ports = @($config.gamePort, $config.restPort, $config.rconPort) | Sort-Object -Unique
     foreach ($p in $ports) {
         $udp = Get-NetUDPEndpoint -LocalPort $p -ErrorAction SilentlyContinue
         $tcp = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue
@@ -243,33 +293,55 @@ function Test-PortsReleased {
 }
 
 function Test-RuntimePorts {
-    <# Returns hashtable with per-port listening status and bind address checks. #>
+    <# Returns configured per-port listening status and bind address checks. #>
+    $config = Get-RuntimePortConfig
     $result = [ordered]@{
-        udp8211  = $false
-        tcp8212  = $false
-        tcp25575 = $false
+        gamePort       = $config.gamePort
+        restPort       = $config.restPort
+        rconPort       = $config.rconPort
+        udpGame        = $false
+        tcpRest        = $false
+        tcpRcon        = $false
         restBindLocal   = $false
         rconBindLocal   = $false
         firewallRules   = $false
     }
 
-    $udp = Get-NetUDPEndpoint -LocalPort 8211 -ErrorAction SilentlyContinue
-    if ($udp) { $result.udp8211 = $true }
+    $udp = Get-NetUDPEndpoint -LocalPort $config.gamePort -ErrorAction SilentlyContinue
+    if ($udp) { $result.udpGame = $true }
 
-    $tcp8212 = Get-NetTCPConnection -LocalPort 8212 -State Listen -ErrorAction SilentlyContinue
-    if ($tcp8212) {
-        $result.tcp8212 = $true
-        $result.restBindLocal = ($tcp8212.LocalAddress -in @('127.0.0.1','0.0.0.0','::','::1'))
+    $tcpRest = Get-NetTCPConnection -LocalPort $config.restPort -State Listen -ErrorAction SilentlyContinue
+    if ($tcpRest) {
+        $result.tcpRest = $true
+        $result.restBindLocal = ($tcpRest.LocalAddress -in @('127.0.0.1','0.0.0.0','::','::1'))
     }
 
-    $tcp25575 = Get-NetTCPConnection -LocalPort 25575 -State Listen -ErrorAction SilentlyContinue
-    if ($tcp25575) {
-        $result.tcp25575 = $true
-        $result.rconBindLocal = ($tcp25575.LocalAddress -in @('127.0.0.1','0.0.0.0','::','::1'))
+    $tcpRcon = Get-NetTCPConnection -LocalPort $config.rconPort -State Listen -ErrorAction SilentlyContinue
+    if ($tcpRcon) {
+        $result.tcpRcon = $true
+        $result.rconBindLocal = ($tcpRcon.LocalAddress -in @('127.0.0.1','0.0.0.0','::','::1'))
     }
 
-    $fw = Get-NetFirewallRule -DisplayName 'Palworld Block REST 8212 Public' -ErrorAction SilentlyContinue
-    if ($fw) { $result.firewallRules = $true }
+    $firewallReady = $true
+    $requiredFirewallRules = @()
+    if ($config.restEnabled) { $requiredFirewallRules += "Palworld Block REST $($config.restPort) Public" }
+    if ($config.rconEnabled) { $requiredFirewallRules += "Palworld Block RCON $($config.rconPort) Public" }
+    foreach ($ruleName in $requiredFirewallRules) {
+        try {
+            if (-not (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)) {
+                $firewallReady = $false
+            }
+        } catch {
+            $firewallReady = $false
+        }
+    }
+    $result.firewallRules = $firewallReady
+
+    # Keep dynamic aliases for existing consumers that used udp8211/tcp8212/
+    # tcp25575, while making the fields truthful when operators change ports.
+    $result["udp$($config.gamePort)"] = $result.udpGame
+    $result["tcp$($config.restPort)"] = $result.tcpRest
+    $result["tcp$($config.rconPort)"] = $result.tcpRcon
 
     return $result
 }
@@ -283,7 +355,8 @@ if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) {
     # Only bootstrap if Docker is NOT currently running, to avoid clobbering an active runtime.
     $dockerRunning = $false
     try {
-        $inspect = docker inspect -f '{{.State.Running}}' palworld-server 2>$null
+        $containerName = Get-ManagementContainerName -ProjectDirectory $projectDir
+        $inspect = docker inspect -f '{{.State.Running}}' $containerName 2>$null
         if ($LASTEXITCODE -eq 0 -and $inspect -eq 'true') { $dockerRunning = $true }
     } catch { }
 

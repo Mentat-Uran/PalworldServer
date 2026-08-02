@@ -1,4 +1,4 @@
-# install-win-server.ps1
+﻿# install-win-server.ps1
 #
 # Installs the Windows-native Palworld Dedicated Server via SteamCMD.
 # Idempotent: re-running without -Force only validates the existing install.
@@ -13,7 +13,8 @@ param(
     [switch]$Force,
     [switch]$UpdateOnly,
     [switch]$SkipFirewall,
-    [switch]$FirewallOnly
+    [switch]$FirewallOnly,
+    [ValidateSet('Install','Validate','Update','Repair')][string]$Mode = 'Install'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,17 +34,73 @@ $appId = 2394010
 . (Join-Path $PSScriptRoot 'runtime-common.ps1')
 $firewallScript = Join-Path $PSScriptRoot 'ensure-win-management-firewall.ps1'
 
+function Write-Step([string]$Msg) { Write-Host "[install-win-server] $Msg" }
+function Write-StepError([string]$Msg) { Write-Host "[install-win-server] ERROR: $Msg" -ForegroundColor Red }
+
+function Test-IsAdministrator {
+    try {
+        $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
+        return $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch {
+        return $false
+    }
+}
+
+function Test-InstallerElevation {
+    if ($SkipFirewall) { return $true }
+    if (-not (Test-IsAdministrator)) {
+        Write-StepError 'Administrator privileges are required before installation because the installer will enforce local-only REST/RCON firewall rules.'
+        Write-StepError 'Re-run install-windows-server.bat from an elevated Administrator shell, or pass -SkipFirewall only if you will create the firewall blocks separately before starting the server.'
+        return $false
+    }
+    return $true
+}
+
+function Test-InstallerPrerequisites {
+    $errors = @()
+    if ($PSVersionTable.PSVersion.Major -lt 5) { $errors += 'PowerShell 5.1 or newer is required.' }
+    $tempDir = [System.IO.Path]::GetTempPath()
+    if (-not (Test-Path -LiteralPath $tempDir -PathType Container)) { $errors += 'The Windows temporary directory is unavailable.' }
+    try {
+        $drive = New-Object System.IO.DriveInfo([System.IO.Path]::GetPathRoot($projectDir))
+        if ($drive.AvailableFreeSpace -lt 8GB) { $errors += "At least 8 GB free disk space is required; available=$([math]::Round($drive.AvailableFreeSpace / 1GB, 2)) GB." }
+    } catch { $errors += "Could not inspect free disk space: $($_.Exception.Message)" }
+    try {
+        $probePath = Join-Path $projectDir ".installer-write-test-$PID.tmp"
+        [System.IO.File]::WriteAllText($probePath, 'ok')
+        Remove-Item -LiteralPath $probePath -Force
+    } catch { $errors += "Project directory is not writable: $($_.Exception.Message)" }
+    try {
+        $null = Invoke-WebRequest -Uri $steamcmdUrl -Method Head -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
+    } catch { $errors += "SteamCMD HTTPS endpoint is not reachable: $($_.Exception.Message)" }
+    if ($errors.Count -gt 0) {
+        foreach ($errorText in $errors) { Write-StepError $errorText }
+        return $false
+    }
+    Write-Step 'Prerequisites: PowerShell, temp directory, disk space, write access and HTTPS check passed.'
+    return $true
+}
+
 if ($FirewallOnly) {
     if ($SkipFirewall) {
         Write-StepError '-FirewallOnly cannot be combined with -SkipFirewall.'
         exit 1
     }
+    if (-not (Test-InstallerElevation)) {
+        exit 2
+    }
     & $firewallScript
     exit $LASTEXITCODE
 }
 
-function Write-Step([string]$Msg) { Write-Host "[install-win-server] $Msg" }
-function Write-StepError([string]$Msg) { Write-Host "[install-win-server] ERROR: $Msg" -ForegroundColor Red }
+# Run the privilege gate before any existing-install validation, force-removal,
+# download, or SteamCMD mutation. A failed firewall gate must never arrive
+# after a multi-gigabyte download or leave a force reinstall without its files.
+if (-not (Test-InstallerElevation)) {
+    Write-Incident -Level 'ERROR' -Type 'win-installer-privilege-failed' -Message 'Installer requires Administrator privileges for the management firewall gate.'
+    exit 2
+}
 
 # ---------------------------------------------------------------------------
 # Step 0: Check existing install
@@ -85,8 +142,7 @@ if (-not $UpdateOnly) {
             exit 1
         }
 
-        Write-Step "Validation complete. Use -UpdateOnly to check for updates."
-        exit 0
+        Write-Step "Existing installation checks passed; SteamCMD validation will run before the final firewall gate."
     }
 
     if ($Force -and (Test-Path -LiteralPath $winServerDir -PathType Container)) {
@@ -102,6 +158,15 @@ if (-not $UpdateOnly) {
         Remove-Item -LiteralPath $winServerDir -Recurse -Force
         Write-Step "win-server removed"
     }
+}
+
+if ($Mode -eq 'Validate' -and -not (Test-Path -LiteralPath $palServerExe -PathType Leaf)) {
+    Write-StepError 'Validate mode requires an existing PalServer.exe.'
+    exit 2
+}
+if (-not (Test-InstallerPrerequisites)) {
+    Write-Incident -Level 'ERROR' -Type 'win-installer-prerequisite-failed' -Message 'Installer prerequisite check failed.'
+    exit 2
 }
 
 # ---------------------------------------------------------------------------
@@ -145,26 +210,36 @@ $psi.CreateNoWindow = $false  # SteamCMD needs a console window for some operati
 
 $proc = New-Object System.Diagnostics.Process
 $proc.StartInfo = $psi
-[void]$proc.Start()
 
-# Stream output to console
-$stdoutTask = $proc.StandardOutput.ReadToEndAsync()
-$stderrTask = $proc.StandardError.ReadToEndAsync()
+# Stream output to the console while SteamCMD is running. This intentionally
+# uses events instead of ReadToEnd so a multi-gigabyte download is observable.
+$proc.add_OutputDataReceived({ param($sender, $event) if ($event.Data) { Write-Host "[SteamCMD] $($event.Data)" } })
+$proc.add_ErrorDataReceived({ param($sender, $event) if ($event.Data) { Write-Host "[SteamCMD][stderr] $($event.Data)" -ForegroundColor DarkYellow } })
+[void]$proc.Start()
+$proc.BeginOutputReadLine()
+$proc.BeginErrorReadLine()
 
 # Wait for exit (no timeout — SteamCMD download can take a long time)
 $proc.WaitForExit()
-$stdout = $stdoutTask.Result
-$stderr = $stderrTask.Result
+$proc.WaitForExit()
 
 if ($proc.ExitCode -ne 0) {
     Write-StepError "SteamCMD exited with code $($proc.ExitCode)"
-    Write-StepError "STDOUT (last 500 chars): $($stdout.Substring([Math]::Max(0, $stdout.Length - 500)))"
-    Write-StepError "STDERR: $stderr"
     Write-Incident -Level 'ERROR' -Type 'win-install-failed' -Message "SteamCMD app_update failed (exit=$($proc.ExitCode))"
     exit 1
 }
 
 Write-Step "SteamCMD completed."
+
+if (-not (Test-Path -LiteralPath $steamcmdExe -PathType Leaf)) {
+    Write-StepError 'steamcmd.exe is missing after download/extraction.'
+    exit 2
+}
+$steamcmdMetadata = Join-Path $steamcmdDir 'download-metadata.json'
+try {
+    $metadata = [ordered]@{ source = $steamcmdUrl; downloadedAt = (Get-Date).ToUniversalTime().ToString('o'); sha256 = (Get-FileHash -LiteralPath $steamcmdExe -Algorithm SHA256).Hash.ToLowerInvariant() }
+    [System.IO.File]::WriteAllText($steamcmdMetadata, ($metadata | ConvertTo-Json -Compress), (New-Object System.Text.UTF8Encoding($false)))
+} catch { Write-StepError "Could not record SteamCMD provenance: $($_.Exception.Message)"; exit 2 }
 
 # ---------------------------------------------------------------------------
 # Step 3: Verify PalServer.exe exists

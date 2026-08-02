@@ -4,24 +4,18 @@ param([Parameter(Mandatory)][string]$Label)
 
 $ErrorActionPreference = 'Stop'
 $projectDir = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'management-api.ps1')
+$management = Get-ManagementEndpointConfig -ProjectDirectory $projectDir
+if (-not $management.restEnabled) { throw 'REST_API_ENABLED=false; latency measurement requires the REST API.' }
 
 # Read admin password for REST auth
-$envPath = Join-Path $projectDir '.env'
-$adminPwd = ''
-if (Test-Path $envPath) {
-    foreach ($line in Get-Content $envPath) {
-        if ($line -match '^ADMIN_PASSWORD=(.*)$') {
-            $adminPwd = $matches[1].Trim('"')
-            break
-        }
-    }
-}
+$adminPwd = Get-ManagementAdminPassword -ProjectDirectory $projectDir
 $basic = "admin:$adminPwd"
 $bytes = [System.Text.Encoding]::ASCII.GetBytes($basic)
 $b64 = [System.Convert]::ToBase64String($bytes)
 $headers = @{ "Authorization" = "Basic $b64" }
 
-$baseUrl = 'http://127.0.0.1:8212/v1/api'
+$baseUrl = $management.restBaseUrl.TrimEnd('/')
 $saveGamesPath = Join-Path $projectDir 'data\Pal\Saved\SaveGames'
 
 Write-Host "=== Latency Measurement: $Label ===" -ForegroundColor Cyan

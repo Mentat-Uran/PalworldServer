@@ -5,7 +5,7 @@ param(
     [ValidateSet('win-x64')]
     [string]$RuntimeIdentifier = 'win-x64',
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '0.1.1',
+    [string]$Version = '',
     [switch]$SelfContained,
     [switch]$Zip,
     [switch]$Msi
@@ -13,6 +13,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
+$versionSource = Join-Path $projectRoot 'version.json'
+if (-not (Test-Path -LiteralPath $versionSource -PathType Leaf)) { throw "Version source is missing: $versionSource" }
+$sourceVersion = [string]((Get-Content -LiteralPath $versionSource -Raw -Encoding UTF8 | ConvertFrom-Json).version)
+if (-not $Version) { $Version = $sourceVersion }
+if ($Version -ne $sourceVersion) { throw "Build version $Version does not match version.json ($sourceVersion). Use scripts\bump-version.ps1 first." }
 $projectFile = Join-Path $projectRoot 'desktop\PalworldConsole.Desktop\PalworldConsole.Desktop.csproj'
 $installerSource = Join-Path $projectRoot 'installer\PalworldServerConsole.wxs'
 $dotnet = Get-Command dotnet.exe -ErrorAction SilentlyContinue

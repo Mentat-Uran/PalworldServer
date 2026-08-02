@@ -1,4 +1,4 @@
-# recover-runtime-state.ps1
+﻿# recover-runtime-state.ps1
 #
 # Disaster recovery for runtime.state.
 # Used when runtime.state is missing, corrupt, or inconsistent with reality.
@@ -30,9 +30,12 @@ $ErrorActionPreference = 'Stop'
 $projectDir = Split-Path -Parent $PSScriptRoot
 
 . (Join-Path $PSScriptRoot 'runtime-common.ps1')
+. (Join-Path $PSScriptRoot 'management-api.ps1')
 
 $statePath = Join-Path $projectDir 'data\runtime.state'
 $saveGamesPath = Join-Path $projectDir 'data\Pal\Saved\SaveGames'
+$management = Get-ManagementEndpointConfig -ProjectDirectory $projectDir
+$containerName = $management.containerName
 
 function Write-RecoverLog {
     param([Parameter(Mandatory)][string]$Message)
@@ -50,7 +53,7 @@ function Test-DockerContainerRunning {
         $null = Get-Command docker.exe -ErrorAction Stop
     } catch { return $false }
     try {
-        $inspect = docker inspect -f '{{.State.Running}}|{{.State.Pid}}|{{.State.StartedAt}}' palworld-server 2>$null
+        $inspect = docker inspect -f '{{.State.Running}}|{{.State.Pid}}|{{.State.StartedAt}}' $containerName 2>$null
         if ($LASTEXITCODE -eq 0 -and $inspect) {
             $parts = $inspect.Trim() -split '\|'
             if ($parts[0] -eq 'true') {
@@ -123,7 +126,7 @@ function Test-SaveGamesIntegrity {
 
 function Get-DockerVersion {
     try {
-        $r = docker exec palworld-server rest-cli info 2>$null
+        $r = docker exec $containerName rest-cli info 2>$null
         if ($LASTEXITCODE -eq 0 -and $r) {
             $info = $r | ConvertFrom-Json -ErrorAction Stop
             return [string]$info.version
@@ -134,7 +137,7 @@ function Get-DockerVersion {
 
 function Get-WinVersion {
     try {
-        $resp = Invoke-WebRequest -Uri 'http://127.0.0.1:8212/v1/api/info' -Method GET -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
+        $resp = Invoke-WebRequest -Uri ($management.restBaseUrl.TrimEnd('/') + '/info') -Method GET -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
         $info = $resp.Content | ConvertFrom-Json -ErrorAction Stop
         return [string]$info.version
     } catch { }
@@ -208,7 +211,7 @@ if ($docker.running) {
 }
 
 $stateMatchesLiveRuntime = $false
-if (-not $stateCorrupt -and $currentState -and $currentState.active -eq $detected) {
+if (-not $stateCorrupt -and $currentState -and -not [bool]$currentState.switching -and $currentState.active -eq $detected) {
     if ($detected -eq 'none') {
         $stateMatchesLiveRuntime = $true
     } elseif ($null -ne $currentState.pid -and [string]$currentState.pid -eq [string]$detectedPid) {

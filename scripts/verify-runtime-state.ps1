@@ -1,4 +1,4 @@
-# Temporary verification script — uses runtime providers to check active runtime state.
+﻿# Temporary verification script — uses runtime providers to check active runtime state.
 # Usage: .\scripts\verify-runtime-state.ps1
 # Safe to delete after the drill.
 

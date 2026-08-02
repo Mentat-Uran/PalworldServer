@@ -33,8 +33,10 @@ function New-SettingsCatalog {
     $groupOverrides = @{
         TZ = "runtime"; PORT = "network"; QUERY_PORT = "network"; PUBLIC_PORT = "network"
         PUBLIC_IP = "network"; REGION = "network"; COMMUNITY = "network"
-        RCON_ENABLED = "network"; RCON_PORT = "network"; REST_API_ENABLED = "network"
-        REST_API_PORT = "network"; USEAUTH = "network"; BAN_LIST_URL = "network"
+         RCON_ENABLED = "network"; RCON_PORT = "network"; REST_API_ENABLED = "network"
+         REST_API_PORT = "network"; ENABLE_LEGACY_RCON = "network"; NETWORK_MODE = "network"
+         TUNNEL_PROVIDER = "network"; TUNNEL_EXECUTABLE = "network"; TUNNEL_ARGUMENTS = "network"
+         TUNNEL_LOCAL_PORT = "network"; TUNNEL_REMOTE_PORT = "network"; PROJECT_INSTANCE_ID = "runtime"; USEAUTH = "network"; BAN_LIST_URL = "network"
         CROSSPLAY_PLATFORMS = "network"; SERVER_REPLICATE_PAWN_CULL_DISTANCE = "network"
         SERVER_NAME = "basic"; SERVER_DESCRIPTION = "basic"; SERVER_PASSWORD = "basic"
         ADMIN_PASSWORD = "basic"; PLAYERS = "basic"; COOP_PLAYER_MAX_NUM = "basic"
@@ -140,6 +142,12 @@ function New-SettingsCatalog {
         $catalog[$Key] = $meta
     }
 
+    function Set-CatalogValue {
+        param([string]$Key, [string]$Property, $Value)
+        $meta = $catalog[$Key]
+        $meta[$Property] = $Value
+    }
+
     # Exact PalWorldSettings.ini environment mapping from the pinned image.
     $gameRows = @'
 DIFFICULTY|None
@@ -215,7 +223,7 @@ RCON_PORT|25575
 REGION|
 USEAUTH|true
 BAN_LIST_URL|https://b.palworldgame.com/api/banlist.txt
-REST_API_ENABLED|false
+REST_API_ENABLED|true
 REST_API_PORT|8212
 SHOW_PLAYER_LIST|false
 CHAT_POST_LIMIT_PER_MINUTE|30
@@ -290,7 +298,7 @@ BUILDING_NAME_DISPLAY_CACHE_TTL_SECONDS|60
 
     # Startup, maintenance, backup, logging and image behavior on amd64.
     $containerRows = @'
-TZ|Asia/Shanghai|string
+TZ|UTC|string
 PORT|8211|integer
 PLAYERS|32|integer
 PUID|1000|integer
@@ -301,11 +309,11 @@ MULTITHREADING|false|boolean
 ENABLE_PERF_THREADING_ARGS|false|boolean
 WORKER_THREADS_SERVER|4|integer
 PALWORLD_ALLOW_NEGATIVE_DELTA_TIME|false|boolean
-UPDATE_ON_BOOT|true|boolean
+UPDATE_ON_BOOT|false|boolean
 BACKUP_ENABLED|true|boolean
-BACKUP_CRON_EXPRESSION|0 4 * * *|string
+BACKUP_CRON_EXPRESSION|0 0 * * *|string
 DELETE_OLD_BACKUPS|true|boolean
-OLD_BACKUP_DAYS|5|integer
+OLD_BACKUP_DAYS|7|integer
 AUTO_UPDATE_ENABLED|false|boolean
 AUTO_UPDATE_CRON_EXPRESSION|0 * * * *|string
 AUTO_UPDATE_WARN_MINUTES|30|integer
@@ -347,6 +355,27 @@ DISCORD_SUPPRESS_NOTIFICATIONS|false|boolean
         if ($key -eq "WORKER_THREADS_SERVER") { $params.DependsOn = "ENABLE_PERF_THREADING_ARGS=true" }
         Add-Setting @params
     }
+
+    # Management and optional tunnel controls are deliberately kept separate
+    # from game settings so the UI can validate the operational contract.
+    Add-Setting -Key "ENABLE_LEGACY_RCON" -Default "false" -Source "network" -Type "boolean" -Risk "caution"
+    Add-Setting -Key "PROJECT_INSTANCE_ID" -Default "palworld-server" -Source "runtime" -Type "string" -Risk "caution" `
+        -DescriptionZh "Instance identity for the Docker container and local runtime lock." `
+        -DescriptionEn "Docker container and local runtime-lock identity; use a unique value when running multiple project directories on one host."
+    Add-Setting -Key "WINDOWS_REST_COMPATIBILITY_MODE" -Default "ini-only" -Source "runtime" -Type "choice" -Options @("compat", "ini-only") -Risk "caution" `
+        -DescriptionZh "Windows REST launch compatibility mode." `
+        -DescriptionEn "Use compat to pass the legacy REST launch switch required by some Windows server builds; use ini-only only after verifying the build."
+    Add-Setting -Key "NETWORK_MODE" -Default "direct" -Source "network" -Type "choice" -Options @("direct", "community", "tunnel")
+    $providerCatalogScript = Join-Path $PSScriptRoot 'tunnel-provider-catalog.ps1'
+    if (-not (Get-Command Get-TunnelProviderIds -ErrorAction SilentlyContinue) -and (Test-Path -LiteralPath $providerCatalogScript -PathType Leaf)) {
+        . $providerCatalogScript
+    }
+    $providerOptions = @(Get-TunnelProviderIds -ProjectDirectory (Split-Path -Parent $PSScriptRoot))
+    Add-Setting -Key "TUNNEL_PROVIDER" -Default "none" -Source "network" -Type "choice" -Options $providerOptions
+    Add-Setting -Key "TUNNEL_EXECUTABLE" -Default "" -Source "network" -Type "string" -DependsOn "TUNNEL_PROVIDER!=none"
+    Add-Setting -Key "TUNNEL_ARGUMENTS" -Default "" -Source "network" -Type "secret" -Secret $true -DependsOn "TUNNEL_PROVIDER!=none"
+    Add-Setting -Key "TUNNEL_LOCAL_PORT" -Default "8211" -Source "network" -Type "integer" -DependsOn "NETWORK_MODE=tunnel"
+    Add-Setting -Key "TUNNEL_REMOTE_PORT" -Default "" -Source "network" -Type "string" -DependsOn "NETWORK_MODE=tunnel"
 
     # Notification hooks present in the pinned image. URLs are write-only.
     $discordEvents = @(
@@ -401,38 +430,33 @@ NET_CLIENT_TICKS_PER_SECOND|120|integer
     # clear constraint. Unknown game-specific ranges remain finite-number
     # validated without invented restrictions.
     foreach ($key in @("PORT", "PUBLIC_PORT", "QUERY_PORT", "RCON_PORT", "REST_API_PORT")) {
-        $catalog[$key]["min"] = 1.0; $catalog[$key]["max"] = 65535.0; $catalog[$key]["step"] = 1.0
+        Set-CatalogValue $key "min" 1.0; Set-CatalogValue $key "max" 65535.0; Set-CatalogValue $key "step" 1.0
     }
     foreach ($key in @("PLAYERS", "COOP_PLAYER_MAX_NUM")) {
-        $catalog[$key]["min"] = 1.0; $catalog[$key]["max"] = 32.0; $catalog[$key]["step"] = 1.0
+        Set-CatalogValue $key "min" 1.0; Set-CatalogValue $key "max" 32.0; Set-CatalogValue $key "step" 1.0
     }
     foreach ($key in @("PUID", "PGID")) {
-        $catalog[$key]["min"] = 0.0; $catalog[$key]["max"] = 2147483647.0; $catalog[$key]["step"] = 1.0
+        Set-CatalogValue $key "min" 0.0; Set-CatalogValue $key "max" 2147483647.0; Set-CatalogValue $key "step" 1.0
     }
     foreach ($key in @("OLD_BACKUP_DAYS", "AUTO_UPDATE_WARN_MINUTES", "AUTO_REBOOT_WARN_MINUTES",
         "AUTO_PAUSE_TIMEOUT_EST", "PLAYER_LOGGING_POLL_PERIOD", "CHAT_POST_LIMIT_PER_MINUTE")) {
-        $catalog[$key]["min"] = 0.0; $catalog[$key]["step"] = 1.0
+        Set-CatalogValue $key "min" 0.0; Set-CatalogValue $key "step" 1.0
     }
     foreach ($key in @("EXP_RATE", "PAL_CAPTURE_RATE", "PAL_SPAWN_NUM_RATE", "DAYTIME_SPEEDRATE",
         "NIGHTTIME_SPEEDRATE", "WORK_SPEED_RATE")) {
-        $catalog[$key]["min"] = 0.0; $catalog[$key]["step"] = 0.1
+        Set-CatalogValue $key "min" 0.0; Set-CatalogValue $key "step" 0.1
     }
-    $catalog["BASE_CAMP_MAX_NUM_IN_GUILD"]["min"] = 1.0
-    $catalog["BASE_CAMP_MAX_NUM_IN_GUILD"]["max"] = 10.0
-    $catalog["BASE_CAMP_WORKER_MAX_NUM"]["min"] = 1.0
-    $catalog["BASE_CAMP_WORKER_MAX_NUM"]["max"] = 50.0
-    $catalog["SERVER_REPLICATE_PAWN_CULL_DISTANCE"]["min"] = 5000.0
-    $catalog["SERVER_REPLICATE_PAWN_CULL_DISTANCE"]["max"] = 15000.0
-    $catalog["MAX_BUILDING_LIMIT_NUM"]["min"] = 0.0
-    $catalog["VOICE_CHAT_MAX_VOLUME_DISTANCE"]["min"] = 0.0
-    $catalog["VOICE_CHAT_ZERO_VOLUME_DISTANCE"]["min"] = 0.0
-    $catalog["PHYSICS_ACTIVE_DROP_ITEM_MAX_NUM"]["min"] = -1.0
-    $catalog["ADMIN_PASSWORD"]["descriptionZh"] = "Write-only. At least 16 characters."
-    $catalog["SERVER_PASSWORD"]["descriptionZh"] = "Write-only. An untouched blank field preserves the current value."
-    $catalog["PORT"]["descriptionZh"] = "Compose follows this UDP port; firewall and SakuraFrp must be updated separately."
-    $catalog["PUBLIC_PORT"]["descriptionZh"] = "Advertised port only; it does not change the listening port."
-    $catalog["LOG_FORMAT_TYPE"]["descriptionZh"] = "Palworld accepts Text or Json. This is not the container log style."
-    $catalog["ALLOW_CLIENT_MOD"]["descriptionZh"] = "Controls client Mod permission only; it does not install any Mod."
+    Set-CatalogValue "BASE_CAMP_MAX_NUM_IN_GUILD" "min" 1.0
+    Set-CatalogValue "BASE_CAMP_MAX_NUM_IN_GUILD" "max" 10.0
+    Set-CatalogValue "BASE_CAMP_WORKER_MAX_NUM" "min" 1.0
+    Set-CatalogValue "BASE_CAMP_WORKER_MAX_NUM" "max" 50.0
+    Set-CatalogValue "SERVER_REPLICATE_PAWN_CULL_DISTANCE" "min" 5000.0
+    Set-CatalogValue "SERVER_REPLICATE_PAWN_CULL_DISTANCE" "max" 15000.0
+    Set-CatalogValue "MAX_BUILDING_LIMIT_NUM" "min" 0.0
+    Set-CatalogValue "VOICE_CHAT_MAX_VOLUME_DISTANCE" "min" 0.0
+    Set-CatalogValue "VOICE_CHAT_ZERO_VOLUME_DISTANCE" "min" 0.0
+    Set-CatalogValue "PHYSICS_ACTIVE_DROP_ITEM_MAX_NUM" "min" -1.0
+    # Keep the catalog source compatible with Windows PowerShell 5.1 parsing.
 
     return $catalog
 }

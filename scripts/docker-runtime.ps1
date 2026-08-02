@@ -7,10 +7,12 @@
 if (-not (Get-Command Get-RuntimeState -ErrorAction SilentlyContinue)) {
     . (Join-Path $PSScriptRoot 'runtime-common.ps1')
 }
+. (Join-Path $PSScriptRoot 'management-api.ps1')
 
 $projectDir = Split-Path -Parent $PSScriptRoot
 $composeFile = Join-Path $projectDir 'docker-compose.yml'
-$containerName = 'palworld-server'
+$composeServiceName = 'palworld-server'
+$containerName = Get-ManagementContainerName -ProjectDirectory $projectDir
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -48,23 +50,14 @@ function Invoke-Compose {
     return Invoke-DockerProcess "compose -f `"$composeFile`" $ArgString" $TimeoutMs
 }
 
-function Invoke-RestCli {
-    <#
-        Calls REST API via the container's bundled `rest-cli` tool.
-        REST port 8212 is intentionally NOT published to the host, so we use
-        `docker compose exec rest-cli <subcommand>` which mirrors the existing
-        settings-panel.ps1 pattern.
-        Supported subcommands: save, players, info, settings, health.
-    #>
+function Invoke-DockerRest {
     param(
-        [Parameter(Mandatory)][string]$SubCommand,
+        [Parameter(Mandatory)][string]$Path,
+        [ValidateSet('GET','POST')][string]$Method = 'GET',
+        [System.Collections.IDictionary]$Body,
         [int]$TimeoutMs = 30000
     )
-    $r = Invoke-Compose "exec -T $containerName rest-cli $SubCommand" $TimeoutMs
-    if ($r.ExitCode -eq 0 -and $r.Stdout) {
-        return @{ ok = $true; stdout = $r.Stdout; stderr = $r.Stderr }
-    }
-    return @{ ok = $false; stdout = $r.Stdout; stderr = $r.Stderr; exitCode = $r.ExitCode }
+    return Invoke-ManagementRestRequest -ProjectDirectory $projectDir -Path $Path -Method $Method -Body $Body -TimeoutMs $TimeoutMs
 }
 
 # ---------------------------------------------------------------------------
@@ -81,7 +74,7 @@ function Start-DockerRuntime {
     # Wait for container running state (max 120s)
     $waitCount = 0
     while ($waitCount -lt 60) {
-        $inspect = Invoke-DockerProcess 'inspect -f "{{.State.Running}}" palworld-server' 5000
+        $inspect = Invoke-DockerProcess "inspect -f `"{{.State.Running}}`" $containerName" 5000
         if ($inspect.ExitCode -eq 0 -and $inspect.Stdout.Trim() -eq 'true') { break }
         Start-Sleep -Seconds 2
         $waitCount++
@@ -92,7 +85,7 @@ function Start-DockerRuntime {
     }
 
     # Get PID
-    $pidResult = Invoke-DockerProcess 'inspect -f "{{.State.Pid}}" palworld-server' 5000
+    $pidResult = Invoke-DockerProcess "inspect -f `"{{.State.Pid}}`" $containerName" 5000
     $containerPid = $null
     if ($pidResult.ExitCode -eq 0) {
         $pidStr = $pidResult.Stdout.Trim()
@@ -118,7 +111,7 @@ function Stop-DockerRuntime {
 }
 
 function Get-DockerRuntimeHealth {
-    $inspect = Invoke-DockerProcess 'inspect -f "{{.State.Running}}|{{.State.Status}}|{{.State.Health.Status}}" palworld-server' 5000
+    $inspect = Invoke-DockerProcess "inspect -f `"{{.State.Running}}|{{.State.Status}}|{{.State.Health.Status}}`" $containerName" 5000
     if ($inspect.ExitCode -ne 0) {
         return @{ status = 'unreachable'; detail = $inspect.Stderr.Trim() }
     }
@@ -129,8 +122,8 @@ function Get-DockerRuntimeHealth {
 
     if (-not $running) { return @{ status = 'unreachable'; detail = "container status: $status" } }
 
-    # Probe REST via container-internal rest-cli
-    $rest = Invoke-RestCli -SubCommand 'health' -TimeoutMs 8000
+    # Probe the same loopback REST endpoint used by Windows native runtime.
+    $rest = Invoke-DockerRest -Path '/info' -Method GET -TimeoutMs 8000
     if ($rest.ok) { return @{ status = 'healthy'; detail = $health } }
     if ($health -eq 'starting') { return @{ status = 'degraded'; detail = 'container health=starting, REST not ready' } }
     return @{ status = 'degraded'; detail = "REST unreachable, container health=$health" }
@@ -138,47 +131,44 @@ function Get-DockerRuntimeHealth {
 
 function Invoke-DockerRuntimeSave {
     param([int]$Timeout = 30)
-    $r = Invoke-RestCli -SubCommand 'save' -TimeoutMs ($Timeout * 1000)
+    $r = Invoke-DockerRest -Path '/save' -Method POST -TimeoutMs ($Timeout * 1000)
     if ($r.ok) {
         # Give the server a moment to flush
         Start-Sleep -Seconds 2
         return @{ ok = $true; method = 'rest' }
     }
-    # RCON fallback
-    $rcon = Invoke-DockerRcon 'Save' $Timeout
-    if ($rcon.ok) { return @{ ok = $true; method = 'rcon' } }
-    return @{ ok = $false; error = "save failed: REST stderr=$($r.stderr); RCON=$($rcon.error)" }
+    return @{ ok = $false; error = "REST save failed: $($r.error)"; code = $r.code }
 }
 
 function Get-DockerRuntimeVersion {
-    $r = Invoke-RestCli -SubCommand 'info' -TimeoutMs 8000
+    $r = Invoke-DockerRest -Path '/info' -Method GET -TimeoutMs 8000
     if ($r.ok) {
         try {
-            $info = $r.stdout | ConvertFrom-Json -ErrorAction Stop
+            $info = $r.content | ConvertFrom-Json -ErrorAction Stop
             return @{ ok = $true; version = [string]$info.version }
         } catch {
             return @{ ok = $false; error = "parse /info failed: $($_.Exception.Message)" }
         }
     }
-    return @{ ok = $false; error = $r.stderr }
+    return @{ ok = $false; error = $r.error }
 }
 
 function Get-DockerRuntimePlayers {
-    $r = Invoke-RestCli -SubCommand 'players' -TimeoutMs 8000
+    $r = Invoke-DockerRest -Path '/players' -Method GET -TimeoutMs 8000
     if ($r.ok) {
         try {
-            $players = $r.stdout | ConvertFrom-Json -ErrorAction Stop
+            $players = $r.content | ConvertFrom-Json -ErrorAction Stop
             return @{ ok = $true; players = $players }
         } catch {
             return @{ ok = $false; error = "parse /players failed: $($_.Exception.Message)" }
         }
     }
-    return @{ ok = $false; error = $r.stderr }
+    return @{ ok = $false; error = $r.error }
 }
 
 function Get-DockerRuntimeLogs {
     param([int]$Lines = 300)
-    $r = Invoke-Compose "logs --tail $Lines --no-color palworld-server" 30000
+    $r = Invoke-Compose "logs --tail $Lines --no-color $composeServiceName" 30000
     if ($r.ExitCode -eq 0) {
         return @{ ok = $true; lines = $r.Stdout -split "`r?`n" }
     }
@@ -186,20 +176,31 @@ function Get-DockerRuntimeLogs {
 }
 
 function Get-DockerRuntimeSettings {
-    $r = Invoke-RestCli -SubCommand 'settings' -TimeoutMs 8000
+    $r = Invoke-DockerRest -Path '/settings' -Method GET -TimeoutMs 8000
     if ($r.ok) {
         try {
-            $settings = $r.stdout | ConvertFrom-Json -ErrorAction Stop
+            $settings = $r.content | ConvertFrom-Json -ErrorAction Stop
             return @{ ok = $true; settings = $settings }
         } catch {
             return @{ ok = $false; error = "parse /settings failed: $($_.Exception.Message)" }
         }
     }
-    return @{ ok = $false; error = $r.stderr }
+    return @{ ok = $false; error = $r.error }
+}
+
+function Invoke-DockerRuntimeOperation {
+    param(
+        [Parameter(Mandatory)][ValidateSet('announce','kick','ban','unban')][string]$Operation,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Payload,
+        [int]$Timeout = 30
+    )
+    $r = Invoke-ManagementOperation -ProjectDirectory $projectDir -Operation $Operation -Payload $Payload
+    if ($r.ok) { return @{ ok = $true; method = 'rest'; operation = $Operation; content = $r.content } }
+    return @{ ok = $false; method = 'rest'; operation = $Operation; code = $r.code; error = $r.error }
 }
 
 function Invoke-DockerRuntimeBackup {
-    $r = Invoke-Compose 'exec -T palworld-server backup' 300000
+    $r = Invoke-Compose "exec -T $composeServiceName backup" 300000
     if ($r.ExitCode -eq 0) {
         return @{ ok = $true; detail = $r.Stdout.Trim() }
     }
@@ -214,7 +215,7 @@ function Invoke-DockerRcon {
     param([Parameter(Mandatory)][string]$Command, [int]$Timeout = 10)
     # Use docker compose exec rcon-cli if available, else direct rcon via TCP
     # The community image ships rcon-cli; rely on it.
-    $r = Invoke-Compose "exec -T palworld-server rcon-cli `"$Command`"" ($Timeout * 1000 + 5000)
+    $r = Invoke-Compose "exec -T $composeServiceName rcon-cli `"$Command`"" ($Timeout * 1000 + 5000)
     if ($r.ExitCode -eq 0) {
         return @{ ok = $true; output = $r.Stdout.Trim() }
     }
@@ -248,7 +249,7 @@ function Test-DockerRuntimeDeps {
 
 function Get-DockerRuntimeMetrics {
     <# Returns CPU/memory metrics for the container. #>
-    $r = Invoke-DockerProcess 'stats --no-stream --format "{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}" palworld-server' 15000
+    $r = Invoke-DockerProcess "stats --no-stream --format `"{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}`" $containerName" 15000
     if ($r.ExitCode -ne 0) {
         return @{ ok = $false; error = $r.Stderr.Trim() }
     }

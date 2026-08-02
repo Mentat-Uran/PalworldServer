@@ -191,6 +191,7 @@ const I18N = {
     'nav.overview': '概览',
     'nav.settings': '设置',
     'nav.logs': '日志',
+    'nav.management': '管理操作',
     'nav.backup': '备份',
     'nav.mods': 'Mod 管理',
     'nav.runtime': '运行时切换',
@@ -208,7 +209,23 @@ const I18N = {
     'panel.settings.desc': '编辑 .env 值。保存后写入文件并重启当前服务。',
     'panel.logs': '日志',
     'panel.logs.desc': '当前服务日志（最近 300 行）',
-    'panel.rcon.desc': '兼容性 RCON 终端，仅本机访问；常用保存操作已优先使用 REST。',
+    'panel.management.title': '管理操作',
+    'panel.rcon.desc': '常用操作使用官方 REST API；兼容 RCON 仅在明确启用时显示。',
+    'rest.title': 'REST 管理操作',
+    'rest.desc': '这些按钮使用结构化 REST 请求，不需要输入自由文本命令。',
+    'rest.announce': '服务器公告',
+    'rest.announce.placeholder': '输入公告内容',
+    'rest.announce.send': '发送公告',
+    'rest.playerId': '玩家 ID',
+    'rest.playerId.placeholder': '从当前玩家列表复制',
+    'rest.playerAction': '玩家操作',
+    'rest.kick': '踢出',
+    'rest.ban': '封禁',
+    'rest.unban': '解封',
+    'rest.playerMessage.placeholder': '可选提示消息',
+    'rest.player.send': '执行玩家操作',
+    'rest.shutdown': '停服等待秒数',
+    'rest.shutdown.send': '通过 REST 停服',
     'panel.backup': '备份',
     'panel.backup.desc': '手动与定时备份。存储于 data/backups/',
     'panel.mods': 'Mod 管理',
@@ -519,6 +536,7 @@ const I18N = {
     'nav.overview': 'Overview',
     'nav.settings': 'Settings',
     'nav.logs': 'Logs',
+    'nav.management': 'Management',
     'nav.backup': 'Backup',
     'nav.mods': 'Mod Manager',
     'nav.runtime': 'Runtime Switch',
@@ -536,7 +554,23 @@ const I18N = {
     'panel.settings.desc': 'Edit .env values. Saving writes the file and restarts the active service.',
     'panel.logs': 'LOGS',
     'panel.logs.desc': 'Current service logs (last 300 lines)',
-    'panel.rcon.desc': 'Compatibility RCON terminal, localhost only. Common save actions prefer REST.',
+    'panel.management.title': 'MANAGEMENT',
+    'panel.rcon.desc': 'Common operations use the official REST API. Legacy RCON appears only when explicitly enabled.',
+    'rest.title': 'REST management operations',
+    'rest.desc': 'These controls send structured REST requests instead of free-form commands.',
+    'rest.announce': 'Server announcement',
+    'rest.announce.placeholder': 'Enter an announcement',
+    'rest.announce.send': 'Send announcement',
+    'rest.playerId': 'Player ID',
+    'rest.playerId.placeholder': 'Copy from the current player table',
+    'rest.playerAction': 'Player action',
+    'rest.kick': 'Kick',
+    'rest.ban': 'Ban',
+    'rest.unban': 'Unban',
+    'rest.playerMessage.placeholder': 'Optional message',
+    'rest.player.send': 'Run player action',
+    'rest.shutdown': 'Shutdown wait seconds',
+    'rest.shutdown.send': 'Shutdown through REST',
     'panel.backup': 'BACKUP',
     'panel.backup.desc': 'Manual & scheduled backups. Stored in data/backups/',
     'panel.mods': 'MOD MANAGER',
@@ -1044,11 +1078,11 @@ function tunnelStateLabel(tunnel) {
   const labels = currentLang === 'zh' ? {
     absent:'未检测到客户端', starting:'正在建立连接', 'local-not-ready':'本地 UDP 未监听',
     'network-unobserved':'本地网络证据未观察到', 'control-disconnected':'节点控制连接断开', ready:'隧道已启动，等待外部验证',
-    degraded:'隧道已启动，但数据连接异常', verified:'外部数据连接已验证'
+    degraded:'隧道已启动，但数据连接异常', verified:'外部数据连接已验证', disabled:'未配置隧道 provider'
   } : {
     absent:'client not detected', starting:'connecting', 'local-not-ready':'local UDP not ready',
     'network-unobserved':'local network evidence was not observed', 'control-disconnected':'node control disconnected', ready:'proxy ready; external check pending',
-    degraded:'proxy ready; data connection degraded', verified:'external data connection verified'
+    degraded:'proxy ready; data connection degraded', verified:'external data connection verified', disabled:'no tunnel provider configured'
   };
   return labels[tunnel.state] || tunnel.state || (currentLang === 'zh' ? '未知' : 'unknown');
 }
@@ -1061,7 +1095,7 @@ function renderTunnelProof(tunnel) {
   $('tunnelEndpoint').textContent = tunnel.externalEndpoint || (zh ? '未从日志识别远程地址' : 'remote endpoint not found');
   const steps = [
     [tunnel.localUdpReady, zh ? `本地 UDP ${tunnel.localPort || 8211} 正在监听` : `Local UDP ${tunnel.localPort || 8211} is listening`, 'localUdp'],
-    [tunnel.processDetected, zh ? 'SakuraFrp/frpc 进程存在' : 'SakuraFrp/frpc process detected', 'process'],
+    [tunnel.processDetected, zh ? `${tunnel.provider || '隧道'} 进程存在` : `${tunnel.provider || 'Tunnel'} process detected`, 'process'],
     [tunnel.controlConnected, zh ? 'frpc 到节点的 TCP 控制连接已建立' : 'frpc node control connection established', 'control'],
     [tunnel.proxyReady, zh ? '服务日志确认 UDP 隧道启动成功' : 'Service log confirms proxy ready', 'proxy'],
     [tunnel.recentExternalTraffic, zh ? '检测到成功的外部数据连接' : 'Successful external data traffic detected', 'traffic']
@@ -1296,10 +1330,10 @@ async function refreshPlayerTimes() {
 
 function dashboardWarningText(message) {
   if (currentLang !== 'zh') return message;
-  if (/SakuraFrp is running, but a newer data-connection error/.test(message)) {
-    return 'SakuraFrp 隧道已经启动，但服务日志中存在更新的数据连接错误。';
+  if (/is running, but a newer data-connection error/.test(message)) {
+    return '隧道 Provider 已经启动，但服务日志中存在更新的数据连接错误。';
   }
-  if (/SakuraFrp is not ready:/.test(message)) {
+  if (/is not ready:/.test(message)) {
     const state = message.split(':').slice(1).join(':').trim().replace(/\.$/, '');
     const labels = {
       absent: '未检测到客户端',
@@ -1310,7 +1344,7 @@ function dashboardWarningText(message) {
       degraded: '隧道数据连接异常',
       verified: '外部数据连接已验证'
     };
-    return `SakuraFrp 尚未就绪：${labels[state] || state}。`;
+    return `隧道 Provider 尚未就绪：${labels[state] || state}。`;
   }
   if (/Container is not fully running/.test(message)) return '容器尚未完全运行。';
   if (/Container health is/.test(message)) return `容器健康状态异常：${message.replace(/^.*? is /, '')}`;
@@ -1522,6 +1556,7 @@ function renderDashboard(s) {
 
   const rest = services.rest || {};
   const rcon = services.rcon || {};
+  const management = services.management || {};
   const tunnel = services.tunnel || {};
   const backup = services.backup || {};
   const dailyLogs = services.dailyLogArchive || {};
@@ -1535,7 +1570,7 @@ function renderDashboard(s) {
   $('serviceList').innerHTML = [
     serviceRow('REST API', rest.reachable ? `${zh?'可访问':'reachable'} · ${rest.port || '—'}` : (zh?'不可访问':'unreachable'), rest.reachable ? 'ok' : 'danger'),
     serviceRow('RCON', rcon.configured ? `${rcon.port || '—'} · localhost` : (zh?'已禁用':'disabled'), rcon.configured ? 'warn' : ''),
-    serviceRow('SakuraFrp', tunnelStateLabel(tunnel), tunnel.level || 'danger'),
+    serviceRow(zh ? `隧道 · ${tunnel.provider || 'none'}` : `Tunnel · ${tunnel.provider || 'none'}`, tunnelStateLabel(tunnel), tunnel.state === 'disabled' ? 'warn' : (tunnel.level || 'danger')),
     serviceRow(zh?'定时备份':'Backups', backup.configured ? `${backup.count || 0} · ${backup.totalSizeMb || 0} MB` : (zh?'已禁用':'disabled'), backup.configured ? 'ok' : 'warn'),
     serviceRow(zh?'每日日志':'Daily logs', dailyLogs.running
       ? `${zh?'运行中':'running'} · ${dailyLogs.count || 0} TXT`
@@ -1543,6 +1578,8 @@ function renderDashboard(s) {
     serviceRow('Mod Manager', mods.enabled ? (zh?'启用':'enabled') : `${zh?'预留/禁用':'reserved/disabled'} · ${mods.installed || 0}`, ''),
     serviceRow(isWin ? (zh?'运行时健康':'Runtime health') : (zh?'容器健康':'Container health'), `${c.health || 'unknown'}${c.oomKilled ? ' · OOM' : ''}`, c.health === 'healthy' && !c.oomKilled ? 'ok' : 'warn')
   ].join('');
+  const legacyRconBlock = $('legacyRconBlock');
+  if (legacyRconBlock) legacyRconBlock.style.display = rcon.configured ? '' : 'none';
   renderTunnelProof(tunnel);
 
   const save = storage.saves || {};
@@ -1943,8 +1980,8 @@ const LOG_EXPLANATIONS = {
     playerJoined:'检测到玩家加入或登录记录。',
     playerLeft:'检测到玩家离开或断线记录。',
     deprecated:'正在使用已弃用功能；当前可能可用，但后续版本可能移除。',
-    tunnelIoTimeout:'SakuraFrp 建立新的数据连接时超时：控制连接和隧道配置可能仍正常，但这次转发没有建立成功。',
-    tunnelConnectionFailed:'SakuraFrp 的节点、控制连接或本地服务转发失败。',
+    tunnelIoTimeout:'隧道 Provider 建立新的数据连接时超时：控制连接和隧道配置可能仍正常，但这次转发没有建立成功。',
+    tunnelConnectionFailed:'隧道 Provider 的节点、控制连接或本地服务转发失败。',
     serverCrash:'检测到崩溃、致命错误或未处理异常。',
     genericError:'检测到错误关键词，但规则无法进一步确定原因；需要结合前后日志判断。',
     genericWarning:'检测到警告关键词；不一定影响运行，但应结合重复频率判断。'
@@ -1967,8 +2004,8 @@ const LOG_EXPLANATIONS = {
     playerJoined:'A player join or login event was detected.',
     playerLeft:'A player leave or disconnect event was detected.',
     deprecated:'A deprecated feature is in use.',
-    tunnelIoTimeout:'SakuraFrp timed out while opening a new data connection; the proxy can remain configured while this transfer failed.',
-    tunnelConnectionFailed:'A SakuraFrp node, control, or local service connection failed.',
+    tunnelIoTimeout:'The tunnel provider timed out while opening a new data connection; the proxy can remain configured while this transfer failed.',
+    tunnelConnectionFailed:'A tunnel provider node, control connection, or local service connection failed.',
     serverCrash:'A crash, fatal error, or unhandled exception was detected.',
     genericError:'An error keyword was found; inspect surrounding lines for the cause.',
     genericWarning:'A warning keyword was found; impact depends on context.'
@@ -1985,7 +2022,7 @@ const LOG_ACTIONS = {
     checkDependency:'确认目标服务正在运行且地址、协议和端口一致。',
     checkNetwork:'检查本机网络、DNS、Docker 与隧道节点；观察错误是否持续出现。',
     reviewSetting:'在官方文档中确认替代接口或设置。',
-    checkTunnelNode:'先点击“验证隧道”确认本地 UDP 与控制连接；若仍重复超时，切换 SakuraFrp 节点或网络后再测试。',
+    checkTunnelNode:'先点击“验证隧道”确认本地 UDP 与控制连接；若仍重复超时，切换 Provider 节点或网络后再测试。',
     checkCrash:'保护存档并查看异常前 30–50 行，重点检查 OOM、Mod、更新和存档错误。',
     inspectContext:'查看该行前后 20 行；若持续重复，再按具体模块处理。'
   },
@@ -1999,7 +2036,7 @@ const LOG_ACTIONS = {
     checkDependency:'Confirm the target service, address, protocol, and port.',
     checkNetwork:'Check local networking, Docker, DNS, and the tunnel node.',
     reviewSetting:'Review the official replacement for this deprecated feature.',
-    checkTunnelNode:'Verify local UDP and the control connection; if timeouts repeat, change the SakuraFrp node or network.',
+    checkTunnelNode:'Verify local UDP and the control connection; if timeouts repeat, change the provider node or network.',
     checkCrash:'Protect the save and inspect 30–50 lines before the crash.',
     inspectContext:'Inspect roughly 20 surrounding lines before acting.'
   }
@@ -2008,7 +2045,25 @@ const LOG_ACTIONS = {
 function logExplanation(entry) {
   return LOG_EXPLANATIONS[currentLang][entry.code] || LOG_EXPLANATIONS[currentLang].activity;
 }
+function configuredPortAction() {
+  const game = String(envValues.PORT || 8211);
+  const query = String(envValues.QUERY_PORT || 27015);
+  const rest = String(envValues.REST_API_PORT || 8212);
+  const rcon = String(envValues.RCON_PORT || 25575);
+  const restRaw = envValues.REST_API_ENABLED;
+  const legacyRaw = envValues.ENABLE_LEGACY_RCON;
+  const rconRaw = envValues.RCON_ENABLED;
+  const restEnabled = restRaw === undefined || restRaw === null || restRaw === ''
+    ? true : /^(true|1|yes)$/i.test(String(restRaw));
+  const rconEnabled = (rconRaw !== undefined && rconRaw !== null && /^(true|1|yes)$/i.test(String(rconRaw))) ||
+    (legacyRaw !== undefined && legacyRaw !== null && /^(true|1|yes)$/i.test(String(legacyRaw)));
+  if (currentLang === 'zh') {
+    return `核对游戏 UDP ${game}、查询 UDP ${query}、REST TCP ${rest}${restEnabled ? '' : '（已关闭）'}${rconEnabled ? `、RCON TCP ${rcon}` : '；RCON 当前关闭'}，以及 Compose 映射是否一致。`;
+  }
+  return `Check game UDP ${game}, query UDP ${query}, REST TCP ${rest}${restEnabled ? '' : ' (disabled)'}${rconEnabled ? `, and RCON TCP ${rcon}` : '; RCON is disabled'}, plus Compose mappings.`;
+}
 function logAction(entry) {
+  if (entry.actionCode === 'checkPorts') return configuredPortAction();
   return LOG_ACTIONS[currentLang][entry.actionCode] || '';
 }
 
@@ -2179,6 +2234,45 @@ function renderRconCmds() {
   });
 }
 renderRconCmds();
+
+async function runRestManagement(operation, payload, confirmation) {
+  if (confirmation) {
+    const confirmed = await showModal(t(confirmation.title), t(confirmation.body));
+    if (!confirmed) return;
+  }
+  const status = $('restManagementStatus');
+  if (status) status.textContent = currentLang === 'zh' ? '正在请求 REST…' : 'Sending REST request…';
+  try {
+    const result = await api('/api/management', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ operation, ...payload })
+    });
+    if (status) status.textContent = result.ok
+      ? (currentLang === 'zh' ? `REST 操作已完成：${operation}` : `REST operation completed: ${operation}`)
+      : (result.error || t('common.error'));
+    if (result.ok) { toast(currentLang === 'zh' ? 'REST 操作已完成' : 'REST operation completed', 'success'); await loadDashboard(); }
+  } catch (error) {
+    if (status) status.textContent = error.message;
+    toast(error.message, 'error', t('common.networkError'));
+  }
+}
+
+$('btnRestAnnounce').addEventListener('click', () => {
+  const message = $('restAnnouncement').value.trim();
+  if (!message) { $('restAnnouncement').focus(); return; }
+  runRestManagement('announce', { message });
+});
+$('btnRestPlayerAction').addEventListener('click', () => {
+  const userid = $('restPlayerId').value.trim();
+  const operation = $('restPlayerAction').value;
+  const message = $('restPlayerMessage').value.trim();
+  if (!userid) { $('restPlayerId').focus(); return; }
+  runRestManagement(operation, { userid, message }, { title: 'modal.rcon.player.title', body: 'modal.rcon.player.body' });
+});
+$('btnRestShutdown').addEventListener('click', () => {
+  const waittime = Math.max(0, Math.min(600, Number($('restShutdownWait').value || 30)));
+  runRestManagement('shutdown', { waittime, message: currentLang === 'zh' ? '服务器将按本地控制台请求停服。' : 'Server shutdown requested by the local console.' }, { title: 'modal.rcon.runtime.title', body: 'modal.rcon.runtime.body' });
+});
 
 function rconConfirmationFor(command) {
   const verb = String(command || '').trim().split(/\s+/, 1)[0].toLowerCase();
@@ -2460,7 +2554,7 @@ const EXACT_SETTING_MEANING_ZH = {
   REST_API_PORT:'官方 REST API 的 TCP 监听端口，项目只映射到本机。',
   SERVER_REPLICATE_PAWN_CULL_DISTANCE:'服务器向客户端同步帕鲁实体的距离，官方建议 5000–15000。',
   CROSSPLAY_PLATFORMS:'允许连接的平台列表，格式如 (Steam,Xbox,PS5,Mac)。',
-  PORT:'游戏 UDP 监听端口；修改后还要同步 Windows 防火墙和 SakuraFrp 本地目标。',
+  PORT:'游戏 UDP 监听端口；修改后还要同步 Windows 防火墙和已配置 Provider 的本地目标。',
   QUERY_PORT:'Steam 查询协议端口；不用于玩家的实际游戏连接。',
   COMMUNITY:'是否把服务器注册到公共社区服务器列表。',
   USE_BACKUP_SAVE_DATA:'启用 Palworld 自身的存档备份机制；频繁备份会增加磁盘负载。',

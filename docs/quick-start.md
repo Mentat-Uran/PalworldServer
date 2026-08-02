@@ -35,11 +35,11 @@ Palworld Server Toolkit 是一个运行在自己电脑上的服务器控制台�
    .\scripts\test-host-prerequisites.ps1 -Runtime windows
    ```
 
-5. 双击 `start-windows.bat`，它会执行受保护的 Windows 原生运行时切换并启动本地 Web Console。
+5. 双击 `start-windows.bat`。启动前会先检查 Windows 服务端、磁盘、内存、端口网络配置和已配置的隧道 Provider；检查失败时不会切换运行时或启动 Web Console。
 6. 打开桌面应用。第一次启动点击左上角“选择服务器目录…”，选第 2 步的项目目录。以后应用会记住这个目录。
 7. 在控制台首页先看“运行时状态”。日常操作建议按“保存世界 → 创建备份 → 再修改设置、重启或切换”的顺序。
 
-Docker 是可选路径：安装 Docker Desktop 并启用 WSL2，复制并填写 `.env` 后运行 `start-docker.bat`。Docker 和 Windows 原生服务端不能同时运行。
+Docker 是可选路径：安装 Docker Desktop 并启用 WSL2，复制并填写 `.env` 后运行 `start-docker.bat`。它会先检查 Docker/WSL2、磁盘、内存和 Provider；Docker 和 Windows 原生服务端不能同时运行。
 
 ## 日常只需要知道这几个位置
 

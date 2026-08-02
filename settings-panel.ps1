@@ -23,6 +23,7 @@ $pidFile = "$projectDir\.settings-panel.pid"
 $portFile = "$projectDir\.settings-panel.port"
 $modManagerScript = "$projectDir\scripts\mod-manager.ps1"
 $settingsCatalogScript = "$projectDir\scripts\settings-catalog.ps1"
+$composeServiceName = "palworld-server"
 $containerName = "palworld-server"
 $diagnosticsDir = "$projectDir\data\diagnostics"
 $incidentFile = "$diagnosticsDir\incidents.jsonl"
@@ -30,7 +31,6 @@ $logArchiveDir = "$projectDir\data\log-archive"
 $panelLogDir = "$projectDir\data\log-sources\panel"
 $logCollectorScript = "$projectDir\scripts\daily-log-collector.ps1"
 $logCollectorPidFile = "$projectDir\.daily-log-collector.pid"
-$sakuraLogDir = "C:\ProgramData\SakuraFrpService\Logs"
 $playerTimesFile = "$projectDir\data\player-session-times.json"
 $maxRequestBytes = 64KB
 $processTimeoutMs = 120000
@@ -61,8 +61,11 @@ $editableFields = New-SettingsCatalog
 # Load runtime providers (M8). These add Get-RuntimeState, Start/Stop-DockerRuntime,
 # Start/Stop-WindowsRuntime, Assert-SaveGamesJunction, Test-SaveGamesJunction, etc.
 . (Join-Path $projectDir 'scripts\runtime-common.ps1')
+. (Join-Path $projectDir 'scripts\management-api.ps1')
+. (Join-Path $projectDir 'scripts\networking.ps1')
 . (Join-Path $projectDir 'scripts\docker-runtime.ps1')
 . (Join-Path $projectDir 'scripts\win-runtime.ps1')
+$containerName = Get-ManagementContainerName -ProjectDirectory $projectDir
 
 # ===== Helpers =====
 
@@ -259,6 +262,8 @@ function Convert-ValidatedUpdates($updates) {
     if ($effective["REST_API_PORT"] -eq $effective["RCON_PORT"]) {
         throw "REST_API_PORT and RCON_PORT must be different TCP ports."
     }
+    $network = Test-NetworkConfiguration -Environment $effective
+    if (-not $network.ok) { throw ($network.errors -join ' ') }
     if ([double]$effective["SMOOTH_FRAME_RATE_LOWER_LIMIT"] -ge
         [double]$effective["SMOOTH_FRAME_RATE_UPPER_LIMIT"]) {
         throw "SMOOTH_FRAME_RATE_LOWER_LIMIT must be lower than SMOOTH_FRAME_RATE_UPPER_LIMIT."
@@ -641,10 +646,29 @@ function Invoke-RuntimeSaveAction() {
     $runtime = Get-ActiveRuntime
     if ($runtime -eq 'windows') {
         $r = Invoke-WindowsRuntimeSave -Timeout 30
-        return @{ ok = [bool]$r.ok; method = 'windows-rest'; error = $r.error }
+        return @{ ok = [bool]$r.ok; method = $r.method; fallback = [bool]$r.fallback; restError = $r.restError; code = $r.code; error = $r.error }
     }
-    if ($runtime -eq 'docker') { return Invoke-Save }
+    if ($runtime -eq 'docker') { return Invoke-DockerRuntimeSave -Timeout 30 }
     return @{ ok = $false; error = "No active runtime" }
+}
+
+function Invoke-RuntimeManagementOperation {
+    param(
+        [Parameter(Mandatory)][ValidateSet('announce','kick','ban','unban','shutdown')][string]$Operation,
+        [System.Collections.IDictionary]$Payload
+    )
+    $runtime = Get-ActiveRuntime
+    if ($runtime -notin @('docker','windows')) { return @{ ok = $false; code = 'no-active-runtime'; error = 'No active runtime.' } }
+    if ($runtime -eq 'windows' -and $Operation -ne 'shutdown') {
+        $result = Invoke-WindowsRuntimeOperation -Operation $Operation -Payload $Payload
+        $result.runtime = $runtime
+        return $result
+    }
+    $result = Invoke-ManagementOperation -ProjectDirectory $projectDir -Operation $Operation -Payload $Payload
+    if ($result.ok) {
+        return @{ ok = $true; method = 'rest'; runtime = $runtime; operation = $Operation; content = $result.content }
+    }
+    return @{ ok = $false; method = 'rest'; runtime = $runtime; operation = $Operation; code = $result.code; error = $result.error }
 }
 
 function Invoke-RuntimeBackupAction() {
@@ -930,7 +954,7 @@ function Get-PlayerCount($status) {
     }
 
     try {
-        $restOut = Invoke-Compose "exec -T $containerName rest-cli players" 15000
+        $restOut = Invoke-Compose "exec -T $composeServiceName rest-cli players" 15000
         if ($restOut.ExitCode -eq 0 -and $restOut.Stdout) {
             $data = Parse-Json $restOut.Stdout
             if ($data -is [System.Collections.IDictionary] -and $data.ContainsKey("players")) {
@@ -961,7 +985,7 @@ function Get-CollectionCount($value) {
 . (Join-Path $PSScriptRoot 'scripts\player-session-times.ps1')
 
 function Get-ContainerState() {
-    $ps = Invoke-Docker 'ps -a --filter name=palworld-server --format "{{.Status}}"'
+    $ps = Invoke-Docker "ps -a --filter name=$containerName --format `"{{.Status}}`""
     $statusLine = ($ps.Stdout -split "`n" | Where-Object { $_ -ne "" }) -join ""
     $status = "unknown"
     $health = "unknown"
@@ -987,11 +1011,24 @@ function Get-ContainerState() {
     $cpu = 0.0
     $mem = 0.0
     $memPct = 0.0
-    $memLimit = 8192  # MB, matches docker-compose.yml
+    $cpuLimit = [Environment]::ProcessorCount
+    $memLimit = 0
+    try {
+        $resourceConfig = Invoke-Docker "inspect $containerName --format `"{{.HostConfig.NanoCpus}}|{{.HostConfig.Memory}}`""
+        if ($resourceConfig.ExitCode -eq 0 -and $resourceConfig.Stdout -match '^([0-9]+)\|([0-9]+)') {
+            $nanoCpus = [double]$matches[1]
+            $memoryBytes = [double]$matches[2]
+            if ($nanoCpus -gt 0) { $cpuLimit = [math]::Max(1, [math]::Round($nanoCpus / 1000000000.0, 2)) }
+            if ($memoryBytes -gt 0) { $memLimit = $memoryBytes / 1MB }
+        }
+    } catch { }
+    if ($memLimit -le 0) {
+        try { $memLimit = [math]::Round((Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory / 1MB, 0) } catch { $memLimit = 0 }
+    }
     if ($status -in @("running", "starting")) {
-        $stats = Invoke-Docker 'stats palworld-server --no-stream --format "{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}"'
+        $stats = Invoke-Docker "stats $containerName --no-stream --format `"{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}`""
         $line = ($stats.Stdout -split "`n" | Where-Object { $_ -ne "" }) -join ""
-        # Format: "15.92%|940.9MiB / 8GiB|11.49%"
+        # Format: "15.92%|940.9MiB / 16GiB|11.49%"
         if ($line -match "([\d.]+)%\|([\d.]+)([A-Za-z]+)\s*/\s*([\d.]+)([A-Za-z]+)\|([\d.]+)%") {
             # Extract all values BEFORE any -match calls (which overwrite $matches)
             $cpu = [double]$matches[1]
@@ -1022,6 +1059,7 @@ function Get-ContainerState() {
         memMb = [math]::Round($mem, 0)
         memLimitMb = [math]::Round($memLimit, 0)
         memPct = $memPct
+        cpuLimit = $cpuLimit
         players = $players
         maxPlayers = $maxPlayers
     }
@@ -1087,7 +1125,8 @@ function Get-WindowsContainerState() {
             $mem = [math]::Round($proc.WorkingSet64 / 1MB, 0)
             $memPct = [math]::Round(($mem / $memLimit) * 100, 1)
 
-            # Health via REST /info (Windows server has no /health endpoint)
+            # Health via REST /info, or exact process/game-UDP readiness when
+            # the current Windows build does not expose native REST.
             $h = Get-WindowsRuntimeHealth
             if ($h.status -eq 'healthy') { $health = 'healthy' }
             elseif ($h.status -eq 'degraded') { $health = 'unhealthy' }
@@ -1145,7 +1184,7 @@ function Get-RuntimeContainerState() {
 
 function Get-RestData([string]$command) {
     try {
-        $result = Invoke-Compose "exec -T $containerName rest-cli $command" 15000
+        $result = Invoke-Compose "exec -T $composeServiceName rest-cli $command" 15000
         if ($result.ExitCode -ne 0 -or -not $result.Stdout.Trim()) {
             return @{ ok = $false; error = ($result.Stderr + " " + $result.Stdout).Trim() }
         }
@@ -1288,181 +1327,57 @@ try {
 }
 
 function Get-TunnelStatus([bool]$force = $false) {
+    # Local network evidence was not observed within the bounded probe timeout.
     if (-not $force -and $null -ne $tunnelCache.value -and
         ((Get-Date) - $tunnelCache.checkedAt).TotalSeconds -lt 10) {
         return $tunnelCache.value
     }
-
     $envVars = Get-EnvVars $envFile
-    $gamePort = 8211
-    if ($envVars.ContainsKey("PORT")) { $gamePort = [int]$envVars["PORT"] }
-
-    $processes = @(Get-Process -ErrorAction SilentlyContinue |
-        Where-Object { $_.ProcessName -match '^(?i:SakuraLauncher|SakuraFrpService|frpc)$' } |
-        Select-Object -First 8 |
-        ForEach-Object {
-            [ordered]@{ name = [string]$_.ProcessName; pid = [int]$_.Id }
-        })
-    $frpcPids = @($processes | Where-Object { $_.name -eq "frpc" } | ForEach-Object { $_.pid })
-
-    $networkProbe = Get-TunnelNetworkProbe -FrpcPids $frpcPids -GamePort $gamePort
-    $networkProbeObserved = [bool]$networkProbe.ok -and [bool]$networkProbe.controlObserved -and [bool]$networkProbe.udpObserved
-    $controlConnections = @($networkProbe.controlConnections | ForEach-Object {
-        [ordered]@{
-            remote = "$(Convert-ToSafeDiagnosticText ([string]$_.remote))"
-            state = [string]$_.state
+    $provider = if ($envVars['TUNNEL_PROVIDER']) { [string]$envVars['TUNNEL_PROVIDER'] } else { 'none' }
+    $gamePort = if ($envVars['PORT']) { [int]$envVars['PORT'] } else { 8211 }
+    if ($provider -eq 'none') {
+        $result = [ordered]@{
+            ok = $true; checkedAt = (Get-Date).ToString('o'); provider = 'none'; state = 'disabled'; level = 'warn'
+            processDetected = $false; processes = @(); localUdpReady = $false; localPort = $gamePort
+            controlConnected = $false; proxyReady = $false; verifiedConnected = $false; externalEndpoint = ''
+            verificationNote = 'No tunnel provider is configured. External connectivity is not verified.'
         }
-    })
-    $localUdpReady = [bool]$networkProbe.localUdpReady
-    $localUdpEvidence = if ($networkProbeObserved) {
-        if ($localUdpReady) { "Windows UDP endpoint is listening." } else { "No Windows UDP endpoint or Docker port mapping was found." }
-    } else {
-        "Local network evidence was not observed within the bounded probe timeout."
+        $tunnelCache.value = $result; $tunnelCache.checkedAt = Get-Date; return $result
     }
+    $providerScript = Join-Path $projectDir 'scripts\tunnel-provider.ps1'
+    $providerResult = @{ ok = $false; state = 'unknown'; pid = $null; detail = '' }
+    try {
+        $raw = Invoke-Process 'powershell.exe' "-NoProfile -ExecutionPolicy Bypass -File `"$providerScript`" -Action Status -Json" 10000
+        if ($raw.ExitCode -eq 0 -and $raw.Stdout.Trim()) { $providerResult = Parse-Json $raw.Stdout.Trim() }
+    } catch { $providerResult.detail = $_.Exception.Message }
+    $providerPid = if ($providerResult.pid) { [int]$providerResult.pid } else { 0 }
+    $networkProbe = Get-TunnelNetworkProbe -FrpcPids @($providerPid) -GamePort $gamePort
+    $activeErrorWindowMinutes = 15
+    $lastErrorAgeMinutes = $null
+    if ([string]$providerResult.state -in @('error', 'failed', 'degraded')) {
+        $lastErrorAgeMinutes = 0
+    }
+    $localUdpReady = [bool]$networkProbe.localUdpReady
     if (-not $localUdpReady -and (Get-ActiveRuntime) -eq 'docker') {
         try {
             $dockerPort = Invoke-Docker "port $containerName $gamePort/udp" 10000
-            if ($dockerPort.ExitCode -eq 0 -and $dockerPort.Stdout -match ":$gamePort(?:\s|$)") {
-                $localUdpReady = $true
-                $localUdpEvidence = "Docker publishes the game UDP port on the host."
-            }
+            if ($dockerPort.ExitCode -eq 0 -and $dockerPort.Stdout -match ":$gamePort(?:\s|$)") { $localUdpReady = $true }
         } catch { }
     }
-
-    $latestLog = $null
-    if (Test-Path -LiteralPath $sakuraLogDir) {
-        $latestLog = Get-ChildItem -LiteralPath $sakuraLogDir -Filter "*.log" -File -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-    }
-    $logLines = @()
-    if ($null -ne $latestLog) {
-        $logLines = @(Get-Content -LiteralPath $latestLog.FullName -Tail 600 -Encoding UTF8 -ErrorAction SilentlyContinue)
-    }
-
-    $currentStamp = $null
-    $lastNodeAt = $null
-    $lastReadyAt = $null
-    $lastStoppedAt = $null
-    $lastErrorAt = $null
-    $lastTrafficAt = $null
-    $lastErrorCode = ""
-    $lastErrorText = ""
-    $externalEndpoint = ""
-    foreach ($lineObject in $logLines) {
-        $line = [string]$lineObject
-        $stamp = Convert-LogTimestamp $line
-        if ($null -ne $stamp) { $currentStamp = $stamp }
-        if ($line -match '(?i)(connected to server successfully|login to server success)' -or
-            $line -match '\u8fde\u63a5\u8282\u70b9\u6210\u529f') {
-            $lastNodeAt = $currentStamp
-        }
-        if ($line -match '(?i)(proxy is available now|tunnel started successfully)' -or
-            $line -match '\u96a7\u9053\u542f\u52a8\u6210\u529f') {
-            $lastReadyAt = $currentStamp
-        }
-        if ($line -match '(?i)frpc.+(exited|stopped)' -or
-            $line -match '\u5df2\u9000\u51fa') {
-            $lastStoppedAt = $currentStamp
-        }
-        if ($line -match '>>([^<>]+:\d+)<<') {
-            $candidateEndpoint = $matches[1]
-            if (-not $externalEndpoint -or $candidateEndpoint -notmatch '^\d{1,3}(?:\.\d{1,3}){3}:') {
-                $externalEndpoint = $candidateEndpoint
-            }
-        }
-        if ($line -match '(?i)(new data connection|visitor connection).+(established|success)' -and
-            $line -notmatch '(?i)(failed|timeout|error)') {
-            $lastTrafficAt = $currentStamp
-        }
-        if ($line -match '(?i)(i/o timeout|login to server failed|connect to local service.+error|control connection.+EOF|new data connection.+failed)') {
-            $lastErrorAt = $currentStamp
-            $lastErrorText = Convert-ToSafeDiagnosticText $line
-            if ($line -match '(?i)i/o timeout') { $lastErrorCode = "ioTimeout" }
-            elseif ($line -match '(?i)login to server failed') { $lastErrorCode = "nodeLoginFailed" }
-            elseif ($line -match '(?i)connect to local service') { $lastErrorCode = "localServiceFailed" }
-            elseif ($line -match '(?i)control connection') { $lastErrorCode = "controlConnectionLost" }
-            else { $lastErrorCode = "dataConnectionFailed" }
-        }
-    }
-
-    $processDetected = ($processes.Count -gt 0)
-    $controlConnected = ($networkProbeObserved -and $controlConnections.Count -gt 0)
-    $proxyReady = ($null -ne $lastReadyAt -and
-        ($null -eq $lastStoppedAt -or $lastReadyAt -gt $lastStoppedAt) -and
-        $processDetected)
-    $errorAfterReady = ($null -ne $lastErrorAt -and
-        ($null -eq $lastReadyAt -or $lastErrorAt -gt $lastReadyAt))
-    $lastErrorAgeMinutes = $null
-    if ($null -ne $lastErrorAt) {
-        $lastErrorAgeMinutes = [math]::Max(0, ((Get-Date) - $lastErrorAt).TotalMinutes)
-    }
-    # A historical one-off timeout remains in the incident journal, but it should
-    # not keep the live status degraded forever when the control/proxy chain is up.
-    $lastErrorActive = ($errorAfterReady -and
-        $null -ne $lastErrorAgeMinutes -and $lastErrorAgeMinutes -le 15)
-    $externalTraffic = ($null -ne $lastTrafficAt -and
-        $null -ne $lastReadyAt -and $lastTrafficAt -ge $lastReadyAt)
-    $verified = ($networkProbeObserved -and $localUdpReady -and $controlConnected -and $proxyReady -and $externalTraffic -and -not $lastErrorActive)
-
-    $state = "absent"
-    $level = "danger"
-    if ($processDetected) { $state = "starting"; $level = "warn" }
-    if ($processDetected -and -not $networkProbeObserved) { $state = "network-unobserved"; $level = "warn" }
-    elseif ($processDetected -and -not $localUdpReady) { $state = "local-not-ready"; $level = "danger" }
-    elseif ($processDetected -and -not $controlConnected) { $state = "control-disconnected"; $level = "danger" }
-    elseif ($controlConnected -and $proxyReady) { $state = "ready"; $level = "warn" }
-    if ($controlConnected -and $proxyReady -and $lastErrorActive) { $state = "degraded"; $level = "warn" }
-    if ($verified) { $state = "verified"; $level = "ok" }
-
+    $running = ([string]$providerResult.state -eq 'running')
+    $state = if (-not $running) { [string]$providerResult.state } elseif (-not $localUdpReady) { 'local-not-ready' } else { 'ready' }
     $result = [ordered]@{
-        ok = $true
-        checkedAt = (Get-Date).ToString("o")
-        state = $state
-        level = $level
-        processDetected = $processDetected
-        processes = $processes
-        localUdpReady = $localUdpReady
-        localPort = $gamePort
-        localUdpEvidence = $localUdpEvidence
-        networkProbeObserved = $networkProbeObserved
-        networkProbeSource = [string]$networkProbe.source
-        networkProbeError = $(if ($networkProbeObserved) { "" } else { [string]$networkProbe.error })
-        controlConnected = $controlConnected
-        controlConnections = $controlConnections
-        proxyReady = $proxyReady
-        externalEndpoint = $externalEndpoint
-        externalAttemptDetected = ($null -ne $lastErrorAt -or $null -ne $lastTrafficAt)
-        recentExternalTraffic = $externalTraffic
-        verifiedConnected = $verified
-        lastNodeConnectedAt = $(if ($null -ne $lastNodeAt) { $lastNodeAt.ToString("o") } else { "" })
-        lastProxyReadyAt = $(if ($null -ne $lastReadyAt) { $lastReadyAt.ToString("o") } else { "" })
-        lastTrafficAt = $(if ($null -ne $lastTrafficAt) { $lastTrafficAt.ToString("o") } else { "" })
-        lastErrorAt = $(if ($null -ne $lastErrorAt) { $lastErrorAt.ToString("o") } else { "" })
-        lastErrorCode = $lastErrorCode
-        lastError = $lastErrorText
-        lastErrorAfterReady = $errorAfterReady
-        lastErrorActive = $lastErrorActive
-        lastErrorAgeMinutes = $(if ($null -ne $lastErrorAgeMinutes) {
-            [math]::Round($lastErrorAgeMinutes, 1)
-        } else { $null })
-        activeErrorWindowMinutes = 15
-        logSource = $(if ($null -ne $latestLog) { $latestLog.Name } else { "" })
-        verificationNote = "Verified requires local UDP, an established frpc control connection, a proxy-ready log, and successful external data traffic."
+        ok = [bool]$providerResult.ok; checkedAt = (Get-Date).ToString('o'); provider = $provider
+        state = $state; level = if ($state -eq 'ready') { 'warn' } else { 'danger' }
+        processDetected = $running; processes = @(); localUdpReady = $localUdpReady; localPort = $gamePort
+        localUdpEvidence = if ($localUdpReady) { 'The game UDP listener is present locally.' } else { 'The game UDP listener was not observed.' }
+        controlConnected = $false; controlConnections = @(); proxyReady = $running; verifiedConnected = $false
+        activeErrorWindowMinutes = $activeErrorWindowMinutes; lastErrorAgeMinutes = $lastErrorAgeMinutes
+        externalEndpoint = ''; externalAttemptDetected = $false; recentExternalTraffic = $false
+        providerDetail = [string]$providerResult.detail
+        verificationNote = 'Provider readiness and a local UDP listener do not prove that an external player can connect. Perform an external player test.'
     }
-    if ($errorAfterReady -and $lastErrorText) {
-        $incidentEntry = [ordered]@{
-            raw = $lastErrorText
-            severity = "error"
-            code = $(if ($lastErrorCode -eq "ioTimeout") { "tunnelIoTimeout" } else { "tunnelConnectionFailed" })
-            actionCode = "checkTunnelNode"
-            loggedAt = $(if ($null -ne $lastErrorAt) { $lastErrorAt.ToString("o") } else { "" })
-        }
-        [void](Add-Incident $incidentEntry)
-    }
-    $tunnelCache.value = $result
-    $tunnelCache.checkedAt = Get-Date
-    return $result
+    $tunnelCache.value = $result; $tunnelCache.checkedAt = Get-Date; return $result
 }
 
 function Clear-DashboardCache() {
@@ -1518,6 +1433,7 @@ function Get-Dashboard {
     $info = @{ ok = $false; error = "Container is not running." }
     $metrics = @{ ok = $false; error = "Container is not running." }
     $playersResult = @{ ok = $false; error = "Container is not running." }
+    $windowsHealth = $null
     if ($state.status -in @("running", "starting")) {
         if ($activeRuntime -eq 'windows') {
             # Windows native: use HTTP REST with Basic auth (no docker exec)
@@ -1531,6 +1447,7 @@ function Get-Dashboard {
                 # Normalize to hashtable shape expected by downstream code
                 $playersResult.data = @{ players = @($parsed.players) }
             }
+            $windowsHealth = Get-WindowsRuntimeHealth
         } else {
             $info = Get-RestData "info"
             $metrics = Get-RestData "metrics"
@@ -1584,6 +1501,8 @@ function Get-Dashboard {
     $saveSummary = Get-DirectorySummary "$projectDir\data\Pal\Saved\SaveGames"
     $updateStatus = Get-StartupUpdateStatus $envVars $activeRuntime $state
     $tunnelStatus = Get-TunnelStatus
+    $management = Get-ManagementEndpointConfig -ProjectDirectory $projectDir -Environment $envVars
+    $networkStatus = Test-NetworkConfiguration -Environment $envVars
     $logInsights = Get-LogInsights 150
     $incidentSummary = Get-IncidentList 20
     $archiveStatus = Get-LogArchiveList
@@ -1592,7 +1511,15 @@ function Get-Dashboard {
         $warnings += if ($activeRuntime -eq 'windows') { "Windows runtime is not running." } else { "Container is not fully running." }
     }
     if ($state.health -notin @("healthy", "none")) { $warnings += "Runtime health is $($state.health)." }
-    if (-not $info.ok -or -not $metrics.ok) { $warnings += "Palworld REST status is unavailable." }
+    if (-not $info.ok -or -not $metrics.ok) {
+        if ($activeRuntime -eq 'windows' -and $null -ne $windowsHealth -and $windowsHealth.management.managementAvailable) {
+            $warnings += "Palworld REST is unavailable; local management fallback is $($windowsHealth.management.fallback)."
+        } elseif ($activeRuntime -eq 'windows' -and $null -ne $windowsHealth) {
+            $warnings += "Palworld REST is unavailable and no confirmed local management fallback is enabled."
+        } else {
+            $warnings += "Palworld REST status is unavailable."
+        }
+    }
     if ($inspectState.ContainsKey("OOMKilled") -and [bool]$inspectState["OOMKilled"]) {
         $warnings += "The container was OOM-killed."
     }
@@ -1607,10 +1534,13 @@ function Get-Dashboard {
     if ($envVars.ContainsKey("REST_API_ENABLED") -and $envVars["REST_API_ENABLED"] -notmatch "^(?i:true)$") {
         $warnings += "REST API is disabled; dashboard and primary management actions will be limited."
     }
+    if (-not $networkStatus.ok) {
+        $warnings += "Network configuration is invalid: $($networkStatus.errors -join ' ')"
+    }
     if ($tunnelStatus.state -eq "degraded") {
-        $warnings += "SakuraFrp is running, but a newer data-connection error was found in its service log."
+        $warnings += "The configured tunnel provider reported a recent data-connection error."
     } elseif ($tunnelStatus.state -notin @("ready", "verified")) {
-        $warnings += "SakuraFrp is not ready: $($tunnelStatus.state)."
+        $warnings += "The configured tunnel provider is not ready: $($tunnelStatus.state)."
     }
     if ($logInsights.ok -and ([int]$logInsights.summary.critical -gt 0 -or [int]$logInsights.summary.error -gt 0)) {
         $warnings += "Recent container logs contain $($logInsights.summary.critical) critical and $($logInsights.summary.error) error entries."
@@ -1659,12 +1589,25 @@ function Get-Dashboard {
                 configured = ($envVars["REST_API_ENABLED"] -match "^(?i:true)$")
                 reachable = [bool]$info.ok
                 port = $envVars["REST_API_PORT"]
+                compatibilityMode = [string]$management.windowsRestCompatibilityMode
+                readiness = if ($null -ne $windowsHealth) { [string]$windowsHealth.readiness } else { if ($info.ok) { 'REST' } else { 'unavailable' } }
             }
             rcon = [ordered]@{
-                configured = ($envVars["RCON_ENABLED"] -match "^(?i:true)$")
-                port = $envVars["RCON_PORT"]
+                configured = [bool]$management.legacyRconEnabled
+                port = $management.rconPort
                 exposure = "127.0.0.1 only"
                 deprecated = $true
+                listening = if ($null -ne $windowsHealth) { [bool]$windowsHealth.management.rconListening } else { $false }
+            }
+            management = [ordered]@{
+                restEnabled = [bool]$management.restEnabled
+                restPort = $management.restPort
+                windowsRestCompatibilityMode = [string]$management.windowsRestCompatibilityMode
+                legacyRconEnabled = [bool]$management.legacyRconEnabled
+                fallback = if ($null -ne $windowsHealth) { [string]$windowsHealth.management.fallback } else { 'none' }
+                managementAvailable = if ($null -ne $windowsHealth) { [bool]$windowsHealth.management.managementAvailable } else { [bool]$info.ok }
+                networkMode = $networkStatus.mode
+                tunnelProvider = $networkStatus.provider
             }
             tunnel = $tunnelStatus
             backup = [ordered]@{
@@ -1852,7 +1795,7 @@ function Get-LogArchiveList() {
     }
     return [ordered]@{
         ok = $true
-        timezone = "Asia/Shanghai"
+        timezone = if ($envVars['TZ']) { [string]$envVars['TZ'] } else { 'UTC' }
         range = "00:00:00-24:00:00"
         retention = "unlimited"
         directory = "data/log-archive"
@@ -2056,7 +1999,7 @@ function Invoke-Rcon([string]$cmd) {
     }
 
     $escaped = $cmd -replace '"','\"'
-    $r = Invoke-Compose "exec -T palworld-server rcon-cli ""$escaped"""
+    $r = Invoke-Compose "exec -T $composeServiceName rcon-cli ""$escaped"""
     if ($r.ExitCode -ne 0) {
         return @{ ok = $false; error = ($r.Stderr + " " + $r.Stdout).Trim() }
     }
@@ -2064,17 +2007,11 @@ function Invoke-Rcon([string]$cmd) {
 }
 
 function Invoke-Save() {
-    $rest = Invoke-Compose "exec -T $containerName rest-cli save" 30000
-    if ($rest.ExitCode -eq 0) {
-        return @{ ok = $true; output = $rest.Stdout.Trim(); method = "REST" }
-    }
-    $rcon = Invoke-Rcon "save"
-    if ($rcon.ok) { $rcon["method"] = "RCON fallback" }
-    return $rcon
+    return Invoke-DockerRuntimeSave -Timeout 30
 }
 
 function Invoke-Backup() {
-    $r = Invoke-Compose "exec -T $containerName backup" 180000
+    $r = Invoke-Compose "exec -T $composeServiceName backup" 180000
     if ($r.ExitCode -ne 0) {
         return @{ ok = $false; error = ($r.Stderr + " " + $r.Stdout).Trim() }
     }
@@ -2082,7 +2019,7 @@ function Invoke-Backup() {
 }
 
 function Stop-Server() {
-    $r = Invoke-Compose "stop -t 120 $containerName" 150000
+    $r = Invoke-Compose "stop -t 120 $composeServiceName" 150000
     if ($r.ExitCode -ne 0) {
         return @{ ok = $false; error = ($r.Stderr + " " + $r.Stdout).Trim() }
     }
@@ -2091,7 +2028,7 @@ function Stop-Server() {
 
 function Restart-Server() {
     # Recreate applies env changes without an explicit down window and preserves the volume.
-    $r = Invoke-Compose "up -d --force-recreate --remove-orphans $containerName" 240000
+    $r = Invoke-Compose "up -d --force-recreate --remove-orphans $composeServiceName" 240000
     if ($r.ExitCode -ne 0) {
         return @{ ok = $false; error = ($r.Stderr + " " + $r.Stdout).Trim() }
     }
@@ -2296,6 +2233,7 @@ while ($listener.IsListening) {
         elseif ($method -eq "POST" -and $path -eq "/api/save") {
             $result = Invoke-RuntimeSaveAction
             Write-PanelEvent $(if ($result.ok) { "INFO" } else { "ERROR" }) "World save requested; ok=$($result.ok)."
+            if (-not $result.ok -and $result.code -eq 'management-unavailable') { $res.StatusCode = 409 }
             Send-Json $res $result
         }
         elseif ($method -eq "GET" -and $path -eq "/api/logs") {
@@ -2342,7 +2280,53 @@ while ($listener.IsListening) {
             Clear-DashboardCache
             Send-Json $res $tunnel
         }
+        elseif ($method -eq "POST" -and $path -eq "/api/management") {
+            try {
+                $data = Read-JsonBody $req
+                if (-not ($data -is [System.Collections.IDictionary]) -or -not $data.ContainsKey('operation')) { throw 'JSON body must contain operation.' }
+                $operation = [string]$data.operation
+                if ($operation -notin @('announce','kick','ban','unban','shutdown')) { throw 'Unsupported REST management operation.' }
+                $payload = [ordered]@{}
+                if ($operation -eq 'announce') {
+                    $message = [string]$data.message
+                    if ($message.Length -lt 1 -or $message.Length -gt 400 -or $message -match '[`r`n`0]') { throw 'Announcement message must be 1-400 characters without control characters.' }
+                    $payload.message = $message
+                } elseif ($operation -in @('kick','ban','unban')) {
+                    $userId = [string]$data.userid
+                    if ($userId.Length -lt 1 -or $userId.Length -gt 256 -or $userId -match '[`r`n`0]') { throw 'Player ID must be 1-256 characters without control characters.' }
+                    if ($userId -notmatch '^[A-Za-z0-9_.:-]+$') { throw 'Player ID contains unsupported characters.' }
+                    $payload.userid = $userId
+                    if ($operation -in @('kick','ban') -and $data.ContainsKey('message')) {
+                        $message = [string]$data.message
+                        if ($message.Length -gt 400 -or $message -match '[`r`n`0]') { throw 'Player message must be at most 400 characters without control characters.' }
+                        $payload.message = $message
+                    }
+                } elseif ($operation -eq 'shutdown') {
+                    $waittime = 30
+                    if ($data.ContainsKey('waittime')) { $waittime = [int]$data.waittime }
+                    if ($waittime -lt 0 -or $waittime -gt 600) { throw 'Shutdown waittime must be between 0 and 600 seconds.' }
+                    $message = if ($data.ContainsKey('message')) { [string]$data.message } else { 'Server shutdown requested by the local console.' }
+                    if ($message.Length -gt 400 -or $message -match '[`r`n`0]') { throw 'Shutdown message must be at most 400 characters without control characters.' }
+                    $payload.waittime = $waittime
+                    $payload.message = $message
+                }
+            } catch {
+                $res.StatusCode = 400
+                Send-Json $res @{ ok = $false; code = 'invalid-management-request'; error = $_.Exception.Message }
+                continue
+            }
+            $result = Invoke-RuntimeManagementOperation -Operation $operation -Payload $payload
+            Write-PanelEvent $(if ($result.ok) { 'INFO' } else { 'ERROR' }) "REST management operation completed: operation=$operation; runtime=$(Get-ActiveRuntime); ok=$($result.ok)."
+            if (-not $result.ok -and $result.code -in @('rest-disabled','management-unavailable')) { $res.StatusCode = 409 }
+            Send-Json $res $result
+        }
         elseif ($method -eq "POST" -and $path -eq "/api/rcon") {
+            $managementConfig = Get-ManagementEndpointConfig -ProjectDirectory $projectDir
+            if (-not $managementConfig.legacyRconEnabled) {
+                $res.StatusCode = 410
+                Send-Json $res @{ ok = $false; code = 'legacy-rcon-disabled'; error = 'Legacy RCON is disabled. Use the REST management operations.' }
+                continue
+            }
             try {
                 $data = Read-JsonBody $req
                 if (-not ($data -is [System.Collections.IDictionary]) -or -not $data.ContainsKey("cmd")) {

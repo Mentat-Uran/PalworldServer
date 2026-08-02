@@ -1,4 +1,4 @@
-# switch-runtime.ps1
+﻿# switch-runtime.ps1
 #
 # Atomic runtime switching between Docker and Windows native Palworld server.
 # Creates pre/post snapshots, stops current runtime, compiles INI, starts target.
@@ -430,19 +430,25 @@ try {
     # game files even for a cold start, so a none -> target launch needs the
     # same pre-operation snapshot policy as a runtime-to-runtime switch.
     if ($state.active -ne 'none') {
-        # 2a. REST save
+        # 2a. Save through the runtime's management path. Windows tries REST
+        # first and uses explicitly enabled local RCON as a compatibility
+        # fallback. If neither path can confirm a save, refuse to stop or
+        # switch the live runtime.
         if (-not $Quiet) { Write-Host "[switch-runtime] Saving world..." }
+        $saveResult = $null
         try {
             if ($state.active -eq 'docker') { $saveResult = Invoke-DockerRuntimeSave -Timeout 30 }
             else { $saveResult = Invoke-WindowsRuntimeSave -Timeout 30 }
-            if ($saveResult.ok) {
-                Write-SwitchLog "  REST save ok (method=$($saveResult.method))"
-            } else {
-                Write-SwitchLog "  REST save failed: $($saveResult.error); continuing"
-                Write-Incident -Level 'WARN' -Type 'switch-save-failed' -Message "Pre-switch save failed for $($state.active): $($saveResult.error)"
-            }
         } catch {
-            Write-SwitchLog "  REST save error: $_; continuing"
+            $saveResult = @{ ok = $false; error = $_.Exception.Message; code = 'management-unavailable' }
+        }
+        if ($saveResult.ok) {
+            Write-SwitchLog "  Management save ok (method=$($saveResult.method))"
+        } else {
+            Write-SwitchLog "  Management save FAILED: $($saveResult.error); refusing to stop"
+            Write-Incident -Level 'ERROR' -Type 'switch-save-failed' -Message "Pre-switch save failed for $($state.active); switch refused: $($saveResult.error)"
+            Write-Host "[switch-runtime] ERROR: Pre-switch save failed; runtime was not stopped. $($saveResult.error)" -ForegroundColor Red
+            exit 10
         }
 
     }
@@ -611,8 +617,10 @@ try {
     }
 
     if (-not $healthOk) {
-        Write-SwitchLog "  Health check timeout after ${healthWait}s (limit=${HealthTimeoutSeconds}s, status=$($health.status))"
-        Write-Incident -Level 'ERROR' -Type 'runtime-health-failed' -Message "$To health check timeout after ${healthWait}s (limit=${HealthTimeoutSeconds}s, status=$($health.status))"
+        $healthDetail = if ($health -and $health.detail) { [string]$health.detail } else { 'No health detail was returned.' }
+        if ($healthDetail.Length -gt 512) { $healthDetail = $healthDetail.Substring(0, 512) }
+        Write-SwitchLog "  Health check timeout after ${healthWait}s (limit=${HealthTimeoutSeconds}s, status=$($health.status), detail=$healthDetail)"
+        Write-Incident -Level 'ERROR' -Type 'runtime-health-failed' -Message "$To health check timeout after ${healthWait}s (limit=${HealthTimeoutSeconds}s, status=$($health.status))" -Detail $healthDetail
         # Don't auto-rollback; leave runtime running for user inspection
         Update-RuntimeState -Active $To -PidValue $startResult.pid -StartedAt (Get-RuntimeIsoTimestamp) -Switching $false
         Write-Host "[switch-runtime] WARN: $To health check timed out. Runtime is running but may not be ready." -ForegroundColor Yellow

@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 $projectDir = Split-Path -Parent $PSScriptRoot
 if (-not $Path) { $Path = Join-Path $projectDir ".env" }
+$templatePath = Join-Path $projectDir '.env.example'
 
 function Read-DotEnv([string]$FilePath) {
     $values = @{}
@@ -40,8 +41,12 @@ function Format-DotEnvValue([string]$Value) {
 if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
     throw ".env not found: $Path"
 }
+if (-not (Test-Path -LiteralPath $templatePath -PathType Leaf)) {
+    throw ".env.example not found: $templatePath"
+}
 
 $values = Read-DotEnv $Path
+$templateValues = Read-DotEnv $templatePath
 
 # Legacy Web Console keys used a non-existent SERVER_SETTINGS_ prefix.
 $legacyMap = @{
@@ -103,36 +108,17 @@ $values.Remove("BACKUP_RETENTION_DAYS")
 $values.Remove("ALLOW_CONNECT_PLATFORM")
 $values.Remove("PAL_EGG_DEFAULT_RANDOM_HEALTH_NUM")
 
-# Project decisions. These values are intentionally authoritative.
-$required = @{
-    "TZ" = "Asia/Shanghai"
-    "PORT" = "8211"
-    "PLAYERS" = "8"
-    "COMMUNITY" = "false"
-    "UPDATE_ON_BOOT" = "true"
-    "REST_API_ENABLED" = "true"
-    "REST_API_PORT" = "8212"
-    "RCON_ENABLED" = "true"
-    "RCON_PORT" = "25575"
-    "QUERY_PORT" = "27015"
-    "CROSSPLAY_PLATFORMS" = "(Steam,Xbox,PS5,Mac)"
-    "BACKUP_ENABLED" = "true"
-    "BACKUP_CRON_EXPRESSION" = "0 4 * * *"
-    "DELETE_OLD_BACKUPS" = "true"
-    "OLD_BACKUP_DAYS" = "5"
-    "USE_BACKUP_SAVE_DATA" = "true"
-    "ENABLE_PLAYER_LOGGING" = "true"
-    "PLAYER_LOGGING_POLL_PERIOD" = "10"
-    "LOG_FILTER_ENABLED" = "true"
-    "LOG_LEVEL" = "INFO"
-    "LOG_FORMAT_TYPE" = "default"
-    "COOP_PLAYER_MAX_NUM" = "8"
-    "DAYTIME_SPEEDRATE" = "0.5"
-    "NIGHTTIME_SPEEDRATE" = "1.0"
-    "EXP_RATE" = "2.0"
-    "DEATH_PENALTY" = "None"
+# The public template is the default source. Explicit values in an existing
+# operator configuration are preserved; migration must not silently change
+# update, RCON, network, password, or gameplay choices.
+if ($templateValues.ContainsKey('ADMIN_PASSWORD')) { $templateValues.Remove('ADMIN_PASSWORD') }
+$addedDefaults = 0
+foreach ($key in $templateValues.Keys) {
+    if (-not $values.ContainsKey($key)) {
+        $values[$key] = [string]$templateValues[$key]
+        $addedDefaults++
+    }
 }
-foreach ($key in $required.Keys) { $values[$key] = $required[$key] }
 
 if (-not $values.ContainsKey("ADMIN_PASSWORD") -or $values["ADMIN_PASSWORD"].Length -lt 16) {
     throw "ADMIN_PASSWORD is missing or shorter than 16 characters; refusing to rewrite .env."
@@ -148,7 +134,9 @@ $sections = @(
             "TZ", "PORT", "PLAYERS", "COMMUNITY", "PUBLIC_IP", "PUBLIC_PORT",
             "SERVER_NAME", "SERVER_DESCRIPTION", "ADMIN_PASSWORD", "SERVER_PASSWORD",
             "UPDATE_ON_BOOT", "REST_API_ENABLED", "REST_API_PORT", "RCON_ENABLED",
-            "RCON_PORT", "QUERY_PORT", "CROSSPLAY_PLATFORMS"
+            "RCON_PORT", "ENABLE_LEGACY_RCON", "QUERY_PORT", "CROSSPLAY_PLATFORMS",
+            "PROJECT_INSTANCE_ID", "WINDOWS_REST_COMPATIBILITY_MODE", "NETWORK_MODE", "TUNNEL_PROVIDER", "TUNNEL_EXECUTABLE", "TUNNEL_ARGUMENTS",
+            "TUNNEL_LOCAL_PORT", "TUNNEL_REMOTE_PORT"
         )
     },
     @{
@@ -214,8 +202,12 @@ if ($remaining.Count -gt 0) {
 $fullPath = [System.IO.Path]::GetFullPath($Path)
 $tempPath = "$fullPath.tmp.$PID"
 $rollbackPath = "$fullPath.rollback.$PID"
+$backupDir = Join-Path $projectDir 'data\diagnostics\env-migrations'
+$backupPath = Join-Path $backupDir ('.env.before-migration-' + (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ') + '-' + [guid]::NewGuid().ToString('N') + '.bak')
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 try {
+    New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+    Copy-Item -LiteralPath $fullPath -Destination $backupPath -Force
     [System.IO.File]::WriteAllLines($tempPath, $output.ToArray(), $utf8NoBom)
     [System.IO.File]::Replace($tempPath, $fullPath, $rollbackPath)
 } finally {
@@ -227,5 +219,5 @@ try {
     }
 }
 
-Write-Host "[OK] Normalized .env without creating a secret-bearing backup."
-Write-Host "[OK] Migrated $migrated legacy setting keys; wrote $($values.Count) keys."
+Write-Host "[OK] Created a private migration backup: $backupPath"
+Write-Host "[OK] Migrated $migrated legacy setting keys and added $addedDefaults missing template defaults; wrote $($values.Count) keys."

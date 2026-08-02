@@ -11,7 +11,7 @@ separate in release notes and incident reports.
 ## Version format
 
 Source releases use semantic versioning and annotated Git tags in the form
-`vMAJOR.MINOR.PATCH`. The current public baseline is `v0.1.1`; future releases
+`vMAJOR.MINOR.PATCH`. The current source baseline is `v0.2.1`; future releases
 must record their changes before tagging them.
 
 - **MAJOR**: an incompatible operator workflow, configuration, REST/Web Console,
@@ -46,8 +46,9 @@ record the following:
 
 1. Confirm the release scope, update `CHANGELOG.md`, and ensure no secret,
    player data, world save, backup, diagnostic log, or local endpoint is staged.
-2. Run `./scripts/test-clean-checkout.ps1` and record its exit result. This is a
-   source-only, disposable-data check; it does not start Docker.
+2. Run `./scripts/test-release-policy.ps1` and `./scripts/test-clean-checkout.ps1`
+   and record their exit results. These are source-only, disposable-data checks;
+   they do not start Docker.
 3. Run `./scripts/verify-project.ps1`. If Docker is intentionally unavailable,
    use `-SkipDocker` and state that the Compose rendering check was skipped.
 4. Review the compatibility contract and record any changed source, image, or
@@ -55,10 +56,18 @@ record the following:
 5. Treat browser smoke tests, runtime switching, backup restore, tunnel access,
    and multiplayer stability as separate evidence. Only report those that were
    run in an approved maintenance window with the required recovery path.
-6. Create an annotated `vMAJOR.MINOR.PATCH` tag from the reviewed commit, publish
-   source checksums if release archives are attached, and keep the release notes
-   aligned with the tag.
+6. On the local Windows release machine, run
+   `./scripts/publish-local-release.ps1 -CertificateThumbprint <thumbprint>`.
+   This fails before building if the local Authenticode certificate or
+   `SignTool.exe` is unavailable, then runs the source gates, builds the desktop
+   artifacts, signs and verifies the executable/MSI, creates SHA-256 sidecars,
+   and writes a release manifest. It never tags, pushes, or creates a GitHub
+   Release.
+7. Review the generated manifest and checksums, create an annotated
+   `vMAJOR.MINOR.PATCH` tag from the reviewed commit, and manually upload the
+   locally generated artifacts and release notes.
 
-Artifact signing is not configured in this repository. Do not imply signed
-provenance until a maintainer has chosen and documented a signing identity and
-verification command.
+The standalone `build-desktop-app.ps1` script is a development/package builder
+and does not sign artifacts. Only the local release orchestrator may be used to
+claim signed desktop artifacts; source archives remain protected by their
+detached SHA-256 sidecars and the generated manifest.

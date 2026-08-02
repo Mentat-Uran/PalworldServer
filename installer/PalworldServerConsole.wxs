@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package
-    Name="Palworld Server Console"
+    Name="Palworld Local Server Console"
     Manufacturer="Mentat-Uran"
     Version="$(var.ProductVersion)"
     UpgradeCode="{4A2D04C2-4F69-4E59-8EEB-0B9F4E0A8D6B}"
@@ -9,17 +9,17 @@
     InstallerVersion="500"
     Compressed="yes">
     <SummaryInformation Description="Local Palworld Server Console desktop host" />
-    <MajorUpgrade DowngradeErrorMessage="A newer version of Palworld Server Console is already installed." />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Palworld Local Server Console is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="INSTALLFOLDER" Name="PalworldServerConsole" />
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder">
-      <Directory Id="APPLICATIONPROGRAMSFOLDER" Name="Palworld Server Console" />
+      <Directory Id="APPLICATIONPROGRAMSFOLDER" Name="Palworld Local Server Console" />
     </StandardDirectory>
 
-    <Feature Id="MainFeature" Title="Palworld Server Console" Level="1">
+    <Feature Id="MainFeature" Title="Palworld Local Server Console" Level="1">
       <ComponentGroupRef Id="ApplicationComponents" />
     </Feature>
   </Package>
@@ -34,7 +34,7 @@
           <Shortcut
             Id="PalworldServerConsoleStartMenuShortcut"
             Directory="APPLICATIONPROGRAMSFOLDER"
-            Name="Palworld Server Console"
+            Name="Palworld Local Server Console"
             WorkingDirectory="INSTALLFOLDER"
             Advertise="no" />
         </File>
