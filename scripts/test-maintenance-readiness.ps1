@@ -12,6 +12,9 @@ param(
 # Docker/REST/RCON command. Its result establishes readiness only, not acceptance.
 $ErrorActionPreference = 'Stop'
 $projectDir = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'management-api.ps1')
+$management = Get-ManagementEndpointConfig -ProjectDirectory $projectDir
+$containerName = $management.containerName
 $results = New-Object System.Collections.Generic.List[object]
 
 function Add-Result {
@@ -40,7 +43,7 @@ function Read-RuntimeState {
 function Get-DockerLiveState {
     try {
         $null = Get-Command docker.exe -ErrorAction Stop
-        $line = & docker.exe inspect -f '{{.State.Running}}|{{.State.Pid}}|{{.State.Health.Status}}|{{.Config.Image}}' palworld-server 2>$null
+        $line = & docker.exe inspect -f '{{.State.Running}}|{{.State.Pid}}|{{.State.Health.Status}}|{{.Config.Image}}' $containerName 2>$null
         if ($LASTEXITCODE -ne 0 -or -not $line) { return @{ known = $true; running = $false } }
         $parts = $line.Trim() -split '\|', 4
         return @{
@@ -140,9 +143,9 @@ if ($Operation -eq 'switch') {
         } else {
             $null = & $firewallScript -Check
             if ($LASTEXITCODE -eq 0) {
-                Add-Result ok 'windows-firewall' 'Inbound REST 8212 and RCON 25575 block rules are active.'
+                Add-Result ok 'windows-firewall' ("Inbound management block rules are active (REST=$($management.restEnabled):$($management.restPort), RCON=$($management.legacyRconEnabled):$($management.rconPort)).")
             } else {
-                Add-Result error 'windows-firewall' 'Inbound REST 8212 and RCON 25575 block rules are missing; do not start Windows runtime.'
+                Add-Result error 'windows-firewall' ("Inbound management block rules are missing (REST=$($management.restEnabled):$($management.restPort), RCON=$($management.legacyRconEnabled):$($management.rconPort)); do not start Windows runtime.")
             }
         }
     } elseif ($Target -eq 'docker' -and -not $docker.known) {

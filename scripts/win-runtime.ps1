@@ -1,4 +1,4 @@
-# win-runtime.ps1
+﻿# win-runtime.ps1
 #
 # Windows native Palworld Dedicated Server runtime provider.
 # Implements the same IRuntimeProvider interface as docker-runtime.ps1.
@@ -352,6 +352,37 @@ function Test-WindowsManagementFirewall {
     return @{ ok = ($missing.Count -eq 0); missing = $missing }
 }
 
+function Get-WindowsRuntimeLaunchArguments {
+    param(
+        [Parameter(Mandatory)][object]$Management,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Environment,
+        [Parameter(Mandatory)][string]$LogPath
+    )
+
+    $logFormat = if ($Environment.ContainsKey('LOG_FORMAT_TYPE') -and $Environment['LOG_FORMAT_TYPE']) {
+        ([string]$Environment['LOG_FORMAT_TYPE']).ToLowerInvariant()
+    } else { 'text' }
+    if ($logFormat -notin @('text', 'json')) { $logFormat = 'text' }
+
+    $flags = @("-port=$($Management.gamePort)", "-queryport=$($Management.queryPort)", "-logformat=$logFormat", '-log', "-abslog=`"$LogPath`"")
+    if ($Management.restEnabled -and $Management.windowsRestCompatibilityMode -eq 'compat') {
+        $flags += '-restapi'
+    }
+    $perfArgsEnabled = ConvertTo-ManagementBoolean $Environment['ENABLE_PERF_THREADING_ARGS'] $false
+    if ($perfArgsEnabled) {
+        $flags += @('-useperfthreads', '-NoAsyncLoadingThread', '-UseMultithreadForDS')
+        $workerThreads = 0
+        if ([int]::TryParse([string]$Environment['WORKER_THREADS_SERVER'], [ref]$workerThreads) -and $workerThreads -gt 0) {
+            $flags += "-NumberOfWorkerThreadsServer=$workerThreads"
+        }
+    }
+    return [pscustomobject]@{
+        flags = @($flags)
+        restMode = [string]$Management.windowsRestCompatibilityMode
+        perfArgsEnabled = $perfArgsEnabled
+    }
+}
+
 function Start-WindowsRuntime {
     <# Starts the Windows native Palworld server. #>
 
@@ -400,12 +431,12 @@ function Start-WindowsRuntime {
     # best-effort raw-log path; lifecycle evidence is written separately.
     $logPath = Get-WinLogPath
     $management = Get-ManagementEndpointConfig -ProjectDirectory $projectDir
-    $flags = @("-port=$($management.gamePort)", "-queryport=$($management.queryPort)", '-useperfthreads', '-NoAsyncLoadingThread', '-UseMultithreadForLoad')
-    if ($management.legacyRconEnabled) { $flags += @('-rcon', '-rpc') }
-    if ($management.restEnabled) { $flags += '-restapi' }
-    $flags += @('-log', "-abslog=`"$logPath`"")
+    $environment = Read-ManagementEnv -ProjectDirectory $projectDir
+    $launchArguments = Get-WindowsRuntimeLaunchArguments -Management $management -Environment $environment -LogPath $logPath
+    $flags = @($launchArguments.flags)
+    $perfArgsEnabled = [bool]$launchArguments.perfArgsEnabled
     $argString = $flags -join ' '
-    Write-WindowsRuntimeEvent -Event 'start-requested' -Message "Launching PalServer.exe; engine raw output path=$logPath (best-effort)."
+    Write-WindowsRuntimeEvent -Event 'start-requested' -Message "Launching PalServer.exe; restMode=$($management.windowsRestCompatibilityMode); REST/RCON settings are INI-controlled; perfArgs=$perfArgsEnabled; engine raw output path=$logPath (best-effort)."
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $palServerExe
@@ -435,66 +466,200 @@ function Start-WindowsRuntime {
         return @{ ok = $false; error = "PalServer.exe exited immediately (code=$($proc.ExitCode))"; log = $lastLog }
     }
 
-    Write-WindowsRuntimeEvent -Event 'start-confirmed' -Message "PalServer.exe launcher PID=$($proc.Id) is running; REST readiness is verified by the switch health check."
+    Write-WindowsRuntimeEvent -Event 'start-confirmed' -Message "PalServer.exe launcher PID=$($proc.Id) is running; REST or exact-process/game-port readiness is verified by the switch health check."
     return @{ ok = $true; pid = $proc.Id; method = 'windows'; process = $proc }
+}
+
+function Get-WindowsRuntimeProcessTree {
+    param([Nullable[int]]$LauncherPid)
+
+    $launcherPath = [System.IO.Path]::GetFullPath($palServerExe)
+    $enginePath = [System.IO.Path]::GetFullPath((Join-Path $winServerDir 'Pal\Binaries\Win64\PalServer-Win64-Shipping-Cmd.exe'))
+    $candidates = @()
+    foreach ($processName in @('PalServer.exe', 'PalServer-Win64-Shipping-Cmd.exe')) {
+        $candidates += @(Get-CimInstance -ClassName Win32_Process -Filter "Name='$processName'" -ErrorAction Stop)
+    }
+
+    $launchers = @($candidates | Where-Object {
+        $_.Name -eq 'PalServer.exe' -and
+        [string]::Equals([string]$_.ExecutablePath, $launcherPath, [System.StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($null -ne $LauncherPid) {
+        $scopedLaunchers = @($launchers | Where-Object { [int]$_.ProcessId -eq [int]$LauncherPid })
+        if ($scopedLaunchers.Count -gt 0) { $launchers = $scopedLaunchers }
+    }
+
+    $launcherPids = @($launchers | ForEach-Object { [int]$_.ProcessId })
+    $engines = @($candidates | Where-Object {
+        $_.Name -eq 'PalServer-Win64-Shipping-Cmd.exe' -and
+        [string]::Equals([string]$_.ExecutablePath, $enginePath, [System.StringComparison]::OrdinalIgnoreCase) -and
+        (
+            ($launcherPids -contains [int]$_.ParentProcessId) -or
+            ($launcherPids.Count -eq 0 -and $null -ne $LauncherPid -and [int]$_.ParentProcessId -eq [int]$LauncherPid) -or
+            ($launcherPids.Count -eq 0 -and $null -eq $LauncherPid)
+        )
+    })
+
+    $targets = @()
+    foreach ($launcher in $launchers) {
+        $targets += [pscustomobject]@{
+            role = 'launcher'
+            pid = [int]$launcher.ProcessId
+            parentPid = [int]$launcher.ParentProcessId
+            expectedPath = $launcherPath
+        }
+    }
+    foreach ($engine in $engines) {
+        $targets += [pscustomobject]@{
+            role = 'engine'
+            pid = [int]$engine.ProcessId
+            parentPid = [int]$engine.ParentProcessId
+            expectedPath = $enginePath
+        }
+    }
+    return @($targets)
+}
+
+function Get-WindowsRuntimeProcessStatus {
+    param([Parameter(Mandatory)][object[]]$Targets)
+
+    $remaining = @()
+    $verificationFailed = $false
+    foreach ($target in @($Targets)) {
+        try {
+            $process = @(Get-CimInstance -ClassName Win32_Process -Filter "ProcessId=$([int]$target.pid)" -ErrorAction Stop) | Select-Object -First 1
+        } catch {
+            $verificationFailed = $true
+            continue
+        }
+        if (-not $process) { continue }
+        if ([string]::IsNullOrWhiteSpace([string]$process.ExecutablePath)) {
+            $verificationFailed = $true
+            continue
+        }
+        if ([string]::Equals([string]$process.ExecutablePath, [string]$target.expectedPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $remaining += $target
+        }
+        # A reused PID with another executable is not our process and is never
+        # acted on. This is intentionally fail-closed for process termination.
+    }
+    return [pscustomobject]@{
+        remaining = @($remaining)
+        verificationFailed = $verificationFailed
+    }
 }
 
 function Stop-WindowsRuntime {
     param([int]$Grace = 120)
 
     $state = Get-RuntimeState
-    $pidValue = $state.pid
-
-    if (-not $pidValue) {
-        # Try to find PalServer.exe by process name
-        $procs = Get-Process -Name 'PalServer' -ErrorAction SilentlyContinue
-        if ($procs) { $pidValue = $procs[0].Id }
+    $statePid = $null
+    if ($state -and $null -ne $state.pid -and [string]$state.pid -match '^\d+$') {
+        $statePid = [int]$state.pid
     }
 
-    if (-not $pidValue) {
-        Write-WindowsRuntimeEvent -Event 'stop-noop' -Message 'No Windows runtime PID found; nothing to stop.'
-        return @{ ok = $true; detail = 'No Windows runtime PID found; nothing to stop' }
+    try {
+        $treeArgs = @{}
+        if ($null -ne $statePid) { $treeArgs.LauncherPid = $statePid }
+        $targets = @(Get-WindowsRuntimeProcessTree @treeArgs)
+    } catch {
+        Write-WindowsRuntimeEvent -Level 'ERROR' -Event 'stop-failed' -Message "Unable to inspect the Windows runtime process tree: $($_.Exception.Message)"
+        return @{ ok = $false; error = 'Unable to verify the Windows runtime process tree.' }
     }
 
-    # 1. Try REST /stop
-    Write-WindowsRuntimeEvent -Event 'stop-requested' -Message "Requesting graceful REST stop for launcher PID=$pidValue."
-    $rest = Invoke-WinRest -Path '/shutdown' -Method POST -Body ([ordered]@{ waittime = 30; message = 'Server shutdown requested by the local console.' }) -TimeoutMs 30000
+    if ($targets.Count -eq 0) {
+        Write-WindowsRuntimeEvent -Event 'stop-noop' -Message 'No exact Windows runtime process tree found; nothing to stop.'
+        return @{ ok = $true; detail = 'No exact Windows runtime process tree found; nothing to stop' }
+    }
+
+    $launcher = @($targets | Where-Object { $_.role -eq 'launcher' } | Select-Object -First 1)
+    $pidValue = if ($launcher.Count -gt 0) { [int]$launcher[0].pid } elseif ($null -ne $statePid) { $statePid } else { $null }
+    $targetSummary = (($targets | ForEach-Object { "$($_.role):$($_.pid)" }) -join ',')
+    Write-WindowsRuntimeEvent -Event 'stop-requested' -Message "Stopping verified Windows runtime process tree ($targetSummary)."
+
+    # 1. Try REST /shutdown when a verified launcher exists.
+    $rest = @{ ok = $false }
+    if ($null -ne $pidValue -and $launcher.Count -gt 0) {
+        $rest = Invoke-WinRest -Path '/shutdown' -Method POST -Body ([ordered]@{ waittime = 30; message = 'Server shutdown requested by the local console.' }) -TimeoutMs 30000
+    }
     if ($rest.ok) {
-        # Wait for process to exit
         $waited = 0
-        while ($waited -lt $Grace) {
-            $p = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
-            if (-not $p) { break }
+        do {
+            $status = Get-WindowsRuntimeProcessStatus -Targets $targets
+            if ($status.verificationFailed) {
+                Write-WindowsRuntimeEvent -Level 'ERROR' -Event 'stop-failed' -Message 'Could not verify one or more Windows runtime PIDs after REST shutdown.'
+                return @{ ok = $false; error = 'Could not verify Windows runtime process identity after REST shutdown.' }
+            }
+            if ($status.remaining.Count -eq 0) {
+                Write-WindowsRuntimeEvent -Event 'stop-confirmed' -Message "Windows runtime stopped through REST; verified process tree=$targetSummary."
+                return @{ ok = $true; method = 'rest' }
+            }
+            if ($waited -ge $Grace) { break }
             Start-Sleep -Seconds 2
             $waited += 2
-        }
-        $p = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
-        if (-not $p) {
-            Write-WindowsRuntimeEvent -Event 'stop-confirmed' -Message "Windows runtime stopped through REST; launcher PID=$pidValue."
-            return @{ ok = $true; method = 'rest' }
+        } while ($true)
+    }
+
+    # 2. Graceful window close, then force-stop only the exact verified PIDs.
+    $status = Get-WindowsRuntimeProcessStatus -Targets $targets
+    if ($status.verificationFailed) {
+        Write-WindowsRuntimeEvent -Level 'ERROR' -Event 'stop-failed' -Message 'Could not verify one or more Windows runtime PIDs before process fallback.'
+        return @{ ok = $false; error = 'Could not verify Windows runtime process identity before fallback.' }
+    }
+    foreach ($target in @($status.remaining | Where-Object { $_.role -eq 'launcher' })) {
+        try {
+            $p = Get-Process -Id ([int]$target.pid) -ErrorAction Stop
+            $p.CloseMainWindow() | Out-Null
+        } catch {
+            # The process may have exited between the identity check and the
+            # window call; final CIM verification below is authoritative.
         }
     }
 
-    # 2. Try Stop-Process (graceful first, then force)
-    try {
-        $p = Get-Process -Id $pidValue -ErrorAction Stop
-        $p.CloseMainWindow() | Out-Null
-        $waited = 0
-        while ($waited -lt 30 -and -not $p.HasExited) {
-            Start-Sleep -Seconds 1
-            $waited++
+    $waited = 0
+    do {
+        Start-Sleep -Seconds 1
+        $status = Get-WindowsRuntimeProcessStatus -Targets $targets
+        if ($status.verificationFailed) {
+            Write-WindowsRuntimeEvent -Level 'ERROR' -Event 'stop-failed' -Message 'Could not verify one or more Windows runtime PIDs during process fallback.'
+            return @{ ok = $false; error = 'Could not verify Windows runtime process identity during fallback.' }
         }
-        if (-not $p.HasExited) {
-            Stop-Process -Id $pidValue -Force
-            $p.WaitForExit(10000) | Out-Null
+        if ($status.remaining.Count -eq 0) {
+            Write-WindowsRuntimeEvent -Level 'WARN' -Event 'stop-fallback' -Message "Windows runtime stopped through graceful process-tree fallback; verified process tree=$targetSummary."
+            return @{ ok = $true; method = 'process-tree-graceful' }
         }
-        Write-WindowsRuntimeEvent -Level 'WARN' -Event 'stop-fallback' -Message "Windows runtime stopped through process fallback; launcher PID=$pidValue."
-        return @{ ok = $true; method = 'process-kill' }
-    } catch {
-        # Process already gone
-        Write-WindowsRuntimeEvent -Event 'stop-confirmed' -Message "Windows runtime launcher PID=$pidValue was already absent."
-        return @{ ok = $true; detail = "Process $pidValue not found (already exited)" }
+        $waited++
+    } while ($waited -lt 30)
+
+    foreach ($target in @($status.remaining | Sort-Object @{ Expression = { if ($_.role -eq 'launcher') { 0 } else { 1 } } })) {
+        $singleStatus = Get-WindowsRuntimeProcessStatus -Targets @($target)
+        if ($singleStatus.verificationFailed) {
+            Write-WindowsRuntimeEvent -Level 'ERROR' -Event 'stop-failed' -Message "Could not verify PID=$($target.pid) before force stop."
+            return @{ ok = $false; error = "Could not verify Windows runtime PID=$($target.pid) before force stop." }
+        }
+        if ($singleStatus.remaining.Count -eq 0) { continue }
+        try {
+            Stop-Process -Id ([int]$target.pid) -Force -ErrorAction Stop
+        } catch {
+            $afterError = Get-WindowsRuntimeProcessStatus -Targets @($target)
+            if ($afterError.verificationFailed -or $afterError.remaining.Count -gt 0) {
+                Write-WindowsRuntimeEvent -Level 'ERROR' -Event 'stop-failed' -Message "Failed to stop verified $($target.role) PID=$($target.pid)."
+                return @{ ok = $false; error = "Failed to stop Windows runtime PID=$($target.pid)." }
+            }
+        }
     }
+
+    Start-Sleep -Seconds 2
+    $finalStatus = Get-WindowsRuntimeProcessStatus -Targets $targets
+    if ($finalStatus.verificationFailed -or $finalStatus.remaining.Count -gt 0) {
+        $residual = ($finalStatus.remaining | ForEach-Object { "$($_.role):$($_.pid)" }) -join ','
+        Write-WindowsRuntimeEvent -Level 'ERROR' -Event 'stop-failed' -Message "Windows runtime process tree still exists after fallback: $residual"
+        Write-Incident -Level 'ERROR' -Type 'runtime-stop-incomplete' -Message "Verified Windows runtime process tree did not fully stop: $residual"
+        return @{ ok = $false; error = "Windows runtime process tree did not fully stop: $residual"; residual = $finalStatus.remaining }
+    }
+
+    Write-WindowsRuntimeEvent -Level 'WARN' -Event 'stop-fallback' -Message "Windows runtime stopped through exact process-tree fallback; verified process tree=$targetSummary."
+    return @{ ok = $true; method = 'process-tree-force' }
 }
 
 function Get-WindowsRuntimeHealth {
@@ -508,13 +673,73 @@ function Get-WindowsRuntimeHealth {
         }
     }
 
+    $management = Get-ManagementEndpointConfig -ProjectDirectory $projectDir
+
     # Check REST — Windows Palworld server does not expose /health;
     # use /info (returns 200 with basic auth when ready, 401/404 otherwise).
     $rest = Invoke-WinRest -Path '/info' -Method GET -TimeoutMs 5000
+    $targets = @()
+    $processReady = $false
+    $processDetail = 'exact PalServer process tree was not verified'
+    try {
+        $treeArgs = @{}
+        if ($null -ne $pidValue) { $treeArgs.LauncherPid = [int]$pidValue }
+        $targets = @(Get-WindowsRuntimeProcessTree @treeArgs)
+        $launcherCount = @($targets | Where-Object { $_.role -eq 'launcher' }).Count
+        $enginePids = @($targets | Where-Object { $_.role -eq 'engine' } | ForEach-Object { [int]$_.pid })
+        $gameListeners = @()
+        if ($enginePids.Count -gt 0) {
+            $gameListeners = @(Get-NetUDPEndpoint -LocalPort $management.gamePort -ErrorAction SilentlyContinue |
+                Where-Object { $enginePids -contains [int]$_.OwningProcess })
+        }
+        $processReady = ($launcherCount -gt 0 -and $enginePids.Count -gt 0 -and $gameListeners.Count -gt 0)
+        $processDetail = "exact process tree=$($targets.Count), engine=$($enginePids.Count), gameUdpOwner=$($gameListeners.Count)"
+    } catch {
+        $processDetail = "exact process/game-port probe failed: $($_.Exception.Message)"
+    }
+    $runtimePids = @($targets | ForEach-Object { [int]$_.pid })
+    $rconListeners = @(Get-NetTCPConnection -LocalPort $management.rconPort -State Listen -ErrorAction SilentlyContinue |
+        Where-Object { $runtimePids -contains [int]$_.OwningProcess })
+    $rconFallback = if ($rest.ok) {
+        'none'
+    } elseif ($management.legacyRconEnabled -and $rconListeners.Count -gt 0) {
+        'rcon'
+    } elseif ($management.legacyRconEnabled) {
+        'rcon-unavailable'
+    } else {
+        'none'
+    }
     $saveIntegrity = Test-SaveGamesIntegrity
+    $restDetail = if ($rest.ok) {
+        "REST /info responded at $($management.restBaseUrl)."
+    } else {
+        "REST /info failed at $($management.restBaseUrl): $($rest.error)"
+    }
+    $readiness = if ($rest.ok) {
+        'REST'
+    } elseif ($processReady) {
+        'exact-process-and-game-udp'
+    } else {
+        'none'
+    }
     $result = [ordered]@{
-        status      = if ($rest.ok) { 'healthy' } else { 'degraded' }
-        detail      = if ($rest.ok) { 'REST /info responded' } else { "REST unreachable: $($rest.error)" }
+        status      = if ($rest.ok -or $processReady) { 'healthy' } else { 'degraded' }
+        detail      = if ($rest.ok) { $restDetail } elseif ($processReady) {
+            "REST unavailable; local game runtime is ready via $processDetail. Management fallback=$rconFallback."
+        } else {
+            "$restDetail; $processDetail."
+        }
+        readiness   = $readiness
+        management  = [ordered]@{
+            restEnabled = [bool]$management.restEnabled
+            restPort = $management.restPort
+            restAvailable = [bool]$rest.ok
+            legacyRconEnabled = [bool]$management.legacyRconEnabled
+            rconPort = $management.rconPort
+            rconListening = ($rconListeners.Count -gt 0)
+            fallback = $rconFallback
+            managementAvailable = ($rest.ok -or $rconFallback -eq 'rcon')
+        }
         saveGames   = $saveIntegrity
     }
     if ($saveIntegrity.corrupted) {
@@ -734,6 +959,48 @@ function Invoke-WindowsRcon {
     }
 }
 
+function Get-WindowsRconFallbackCommand {
+    <# Maps the small, validated management surface to Palworld RCON commands. #>
+    param(
+        [Parameter(Mandatory)][ValidateSet('announce','kick','ban','unban')][string]$Operation,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Payload
+    )
+    $getValue = {
+        param([string]$Key, [bool]$Required)
+        if (-not $Payload.Contains($Key)) {
+            if ($Required) { throw "Management payload is missing $Key." }
+            return ''
+        }
+        $value = [string]$Payload[$Key]
+        if ($Required -and [string]::IsNullOrWhiteSpace($value)) { throw "Management payload $Key is required." }
+        if ($value -match "[`r`n`0]") { throw "Management payload $Key contains unsupported control characters." }
+        return $value.Trim()
+    }
+
+    switch ($Operation) {
+        'announce' {
+            $message = & $getValue 'message' $true
+            if ($message.Length -gt 400) { throw 'Announcement message must be at most 400 characters.' }
+            return "Broadcast $message"
+        }
+        'kick' {
+            $userid = & $getValue 'userid' $true
+            if ($userid -notmatch '^[A-Za-z0-9_.:-]+$') { throw 'Player ID contains unsupported characters.' }
+            return "KickPlayer $userid"
+        }
+        'ban' {
+            $userid = & $getValue 'userid' $true
+            if ($userid -notmatch '^[A-Za-z0-9_.:-]+$') { throw 'Player ID contains unsupported characters.' }
+            return "BanPlayer $userid"
+        }
+        'unban' {
+            $userid = & $getValue 'userid' $true
+            if ($userid -notmatch '^[A-Za-z0-9_.:-]+$') { throw 'Player ID contains unsupported characters.' }
+            return "UnBanPlayer $userid"
+        }
+    }
+}
+
 function Invoke-WindowsRuntimeSave {
     param([int]$Timeout = 30)
     $r = Invoke-WinRest -Path '/save' -Method POST -TimeoutMs ($Timeout * 1000)
@@ -741,7 +1008,16 @@ function Invoke-WindowsRuntimeSave {
         Start-Sleep -Seconds 2
         return @{ ok = $true; method = 'rest' }
     }
-    return @{ ok = $false; error = "REST save failed: $($r.error)"; code = $r.code }
+    $management = Get-ManagementEndpointConfig -ProjectDirectory $projectDir
+    if (-not $management.legacyRconEnabled) {
+        return @{ ok = $false; method = 'rest'; error = "REST save failed: $($r.error); legacy RCON fallback is disabled."; code = 'management-unavailable' }
+    }
+    $fallback = Invoke-WindowsRcon -Command 'Save' -Timeout $Timeout
+    if ($fallback.ok) {
+        Start-Sleep -Seconds 2
+        return @{ ok = $true; method = 'rcon'; fallback = $true; restError = $r.error }
+    }
+    return @{ ok = $false; method = 'rcon'; fallback = $true; error = "REST save failed: $($r.error); RCON fallback failed: $($fallback.error)"; code = 'management-unavailable' }
 }
 
 function Invoke-WindowsRuntimeOperation {
@@ -752,7 +1028,20 @@ function Invoke-WindowsRuntimeOperation {
     )
     $r = Invoke-ManagementOperation -ProjectDirectory $projectDir -Operation $Operation -Payload $Payload
     if ($r.ok) { return @{ ok = $true; method = 'rest'; operation = $Operation; content = $r.content } }
-    return @{ ok = $false; method = 'rest'; operation = $Operation; code = $r.code; error = $r.error }
+    $management = Get-ManagementEndpointConfig -ProjectDirectory $projectDir
+    if (-not $management.legacyRconEnabled) {
+        return @{ ok = $false; method = 'rest'; operation = $Operation; code = 'management-unavailable'; error = "REST operation failed: $($r.error); legacy RCON fallback is disabled." }
+    }
+    try {
+        $command = Get-WindowsRconFallbackCommand -Operation $Operation -Payload $Payload
+    } catch {
+        return @{ ok = $false; method = 'rest'; operation = $Operation; code = 'invalid-management-request'; error = $_.Exception.Message }
+    }
+    $fallback = Invoke-WindowsRcon -Command $command -Timeout $Timeout
+    if ($fallback.ok) {
+        return @{ ok = $true; method = 'rcon'; fallback = $true; operation = $Operation; content = $fallback.output; restError = $r.error }
+    }
+    return @{ ok = $false; method = 'rcon'; fallback = $true; operation = $Operation; code = 'management-unavailable'; error = "REST operation failed: $($r.error); RCON fallback failed: $($fallback.error)" }
 }
 
 function Get-WindowsRuntimeVersion {

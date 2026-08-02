@@ -1,19 +1,19 @@
 {
-  "name": "palworld-server-console-tools",
-  "version": "0.2.0",
-  "private": true,
-  "description": "Local development and browser-regression tools for the Palworld Server Console.",
-  "engines": {
-    "node": ">=22 <25"
-  },
-  "scripts": {
-    "test:i18n": "node scripts/test-i18n-parity.cjs",
-    "test:console-guided-actions": "node scripts/test-console-guided-actions.cjs",
-    "test:player-command-picker": "node scripts/test-player-command-picker.cjs",
-    "test:compare-save-integrity": "node scripts/test-compare-save-integrity.cjs",
-    "test:ui": "node scripts/ui-smoke.cjs"
-  },
-  "devDependencies": {
-    "playwright-core": "1.62.0"
-  }
+    "name":  "palworld-server-console-tools",
+    "version":  "0.2.1",
+    "private":  true,
+    "description":  "Local development and browser-regression tools for the Palworld Server Console.",
+    "engines":  {
+                    "node":  "\u003e=22 \u003c25"
+                },
+    "scripts":  {
+                    "test:i18n":  "node scripts/test-i18n-parity.cjs",
+                    "test:console-guided-actions":  "node scripts/test-console-guided-actions.cjs",
+                    "test:player-command-picker":  "node scripts/test-player-command-picker.cjs",
+                    "test:compare-save-integrity":  "node scripts/test-compare-save-integrity.cjs",
+                    "test:ui":  "node scripts/ui-smoke.cjs"
+                },
+    "devDependencies":  {
+                            "playwright-core":  "1.62.0"
+                        }
 }

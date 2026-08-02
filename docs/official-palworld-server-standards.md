@@ -241,7 +241,7 @@ Windows 原生入口为 `PalServer.exe`，Linux 原生入口为 `PalServer.sh`�
 - 新功能禁止以 RCON 为首选实现。
 - REST 能完成的操作必须使用 REST。
 - 不得通过 SakuraFrp、防火墙公网规则、反向代理或路由器映射公开 RCON。
-- RCON 停止工作不应阻断保存、玩家查询、备份或优雅停服。
+- RCON 不能替代 REST；REST 正常时 RCON 停止工作不得阻断保存、玩家查询、备份或优雅停服。若当前 Windows 构建没有 REST，且 RCON 又未明确启用或不可用，则必须拒绝需要保存确认的切换/备份操作，而不是无声继续。
 
 ## 9. Mod 规范
 

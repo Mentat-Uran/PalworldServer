@@ -10,6 +10,7 @@ $ErrorActionPreference = 'Stop'
 $projectDir = Split-Path -Parent $PSScriptRoot
 $pidFile = Join-Path $projectDir 'data\diagnostics\tunnel-provider.pid'
 $envPath = Join-Path $projectDir '.env'
+. (Join-Path $PSScriptRoot 'tunnel-provider-catalog.ps1')
 
 function Read-ProviderEnv {
     $values = @{}
@@ -34,16 +35,20 @@ function Get-ProviderResult {
 
 function Find-ProviderExecutable([hashtable]$Environment) {
     if ($Environment['TUNNEL_EXECUTABLE']) { return [string]$Environment['TUNNEL_EXECUTABLE'] }
-    if ($Environment['TUNNEL_PROVIDER'] -eq 'sakurafrp') {
-        $command = Get-Command SakuraLauncher.exe -ErrorAction SilentlyContinue
-        if ($command) { return $command.Source }
+    $definition = Get-TunnelProviderDefinition -Provider ([string]$Environment['TUNNEL_PROVIDER']) -ProjectDirectory $projectDir
+    if ($definition) {
+        foreach ($name in @($definition.autoDiscoverExecutables)) {
+            $command = Get-Command $name -ErrorAction SilentlyContinue
+            if ($command) { return $command.Source }
+        }
     }
     return $null
 }
 
 $environment = Read-ProviderEnv
 $provider = if ($environment['TUNNEL_PROVIDER']) { [string]$environment['TUNNEL_PROVIDER'] } else { 'none' }
-if ($provider -notin @('none','generic-process','sakurafrp')) { throw "Unsupported tunnel provider: $provider" }
+$providerDefinition = Get-TunnelProviderDefinition -Provider $provider -ProjectDirectory $projectDir
+if (-not $providerDefinition) { throw "Unsupported tunnel provider: $provider" }
 
 $result = [ordered]@{ ok = $true; provider = $provider; state = 'disabled'; pid = $null; detail = $null }
 if ($provider -eq 'none') {

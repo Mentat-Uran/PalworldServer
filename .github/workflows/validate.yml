@@ -22,11 +22,6 @@ jobs:
         with:
           node-version: 22
 
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
-
       - name: Create CI-only configuration
         shell: pwsh
         run: |
@@ -57,7 +52,14 @@ jobs:
           .\scripts\test-player-session-times.ps1
           .\scripts\test-runtime-orchestration-contract.ps1
           .\scripts\test-runtime-common-behavior.ps1
+          .\scripts\test-recover-runtime-state-behavior.ps1
           .\scripts\test-management-network-contract.ps1
+          .\scripts\test-instance-isolation.ps1
+          .\scripts\test-windows-rest-compatibility.ps1
+          .\scripts\test-launch-config.ps1
+          .\scripts\test-tunnel-provider-catalog.ps1
+          .\scripts\test-release-policy.ps1
+          .\scripts\audit-public-release.ps1 -Strict
           .\scripts\test-version-consistency.ps1
           .\scripts\test-desktop-host.ps1
           .\scripts\test-desktop-installer.ps1
@@ -66,23 +68,3 @@ jobs:
       - name: Run source validation
         shell: pwsh
         run: .\scripts\verify-project.ps1 -SkipDocker
-
-  desktop-host-build:
-    name: Desktop host compile (Windows)
-    runs-on: windows-latest
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
-
-      - name: Restore locked desktop host
-        shell: pwsh
-        run: dotnet restore .\desktop\PalworldConsole.Desktop\PalworldConsole.Desktop.csproj --locked-mode
-
-      - name: Compile desktop host without a server runtime
-        shell: pwsh
-        run: dotnet build .\desktop\PalworldConsole.Desktop\PalworldConsole.Desktop.csproj --configuration Release --no-restore

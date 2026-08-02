@@ -1,4 +1,4 @@
-# install-win-server.ps1
+﻿# install-win-server.ps1
 #
 # Installs the Windows-native Palworld Dedicated Server via SteamCMD.
 # Idempotent: re-running without -Force only validates the existing install.
@@ -34,17 +34,28 @@ $appId = 2394010
 . (Join-Path $PSScriptRoot 'runtime-common.ps1')
 $firewallScript = Join-Path $PSScriptRoot 'ensure-win-management-firewall.ps1'
 
-if ($FirewallOnly) {
-    if ($SkipFirewall) {
-        Write-StepError '-FirewallOnly cannot be combined with -SkipFirewall.'
-        exit 1
-    }
-    & $firewallScript
-    exit $LASTEXITCODE
-}
-
 function Write-Step([string]$Msg) { Write-Host "[install-win-server] $Msg" }
 function Write-StepError([string]$Msg) { Write-Host "[install-win-server] ERROR: $Msg" -ForegroundColor Red }
+
+function Test-IsAdministrator {
+    try {
+        $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
+        return $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch {
+        return $false
+    }
+}
+
+function Test-InstallerElevation {
+    if ($SkipFirewall) { return $true }
+    if (-not (Test-IsAdministrator)) {
+        Write-StepError 'Administrator privileges are required before installation because the installer will enforce local-only REST/RCON firewall rules.'
+        Write-StepError 'Re-run install-windows-server.bat from an elevated Administrator shell, or pass -SkipFirewall only if you will create the firewall blocks separately before starting the server.'
+        return $false
+    }
+    return $true
+}
 
 function Test-InstallerPrerequisites {
     $errors = @()
@@ -69,6 +80,26 @@ function Test-InstallerPrerequisites {
     }
     Write-Step 'Prerequisites: PowerShell, temp directory, disk space, write access and HTTPS check passed.'
     return $true
+}
+
+if ($FirewallOnly) {
+    if ($SkipFirewall) {
+        Write-StepError '-FirewallOnly cannot be combined with -SkipFirewall.'
+        exit 1
+    }
+    if (-not (Test-InstallerElevation)) {
+        exit 2
+    }
+    & $firewallScript
+    exit $LASTEXITCODE
+}
+
+# Run the privilege gate before any existing-install validation, force-removal,
+# download, or SteamCMD mutation. A failed firewall gate must never arrive
+# after a multi-gigabyte download or leave a force reinstall without its files.
+if (-not (Test-InstallerElevation)) {
+    Write-Incident -Level 'ERROR' -Type 'win-installer-privilege-failed' -Message 'Installer requires Administrator privileges for the management firewall gate.'
+    exit 2
 }
 
 # ---------------------------------------------------------------------------

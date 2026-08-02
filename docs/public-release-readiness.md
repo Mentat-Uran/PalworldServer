@@ -11,6 +11,7 @@ Run these from a candidate release checkout:
 
 ```powershell
 .\scripts\audit-public-release.ps1 -Strict
+.\scripts\test-release-policy.ps1
 .\scripts\test-clean-checkout.ps1
 .\scripts\verify-project.ps1
 ```
@@ -33,6 +34,19 @@ non-loopback rejection without opening a player, game, or tunnel connection.
 `test-clean-checkout.ps1` creates disposable configuration and data. Neither it
 nor static validation starts a server, tests a tunnel, accesses a backup, or
 proves a runtime feature.
+
+Formal artifacts must be built on the maintainer's local Windows machine:
+
+```powershell
+.\scripts\publish-local-release.ps1 -CertificateThumbprint '<40-char thumbprint>'
+```
+
+The local release script preflights the certificate and `SignTool.exe`, runs the
+source gates, builds the desktop and complete bundle artifacts, signs and
+verifies the executable/MSI, writes SHA-256 sidecars and a manifest, and stops
+before any Git tag, push, or GitHub Release operation. GitHub Actions is limited
+to source validation and publication-policy checks; it must not build, sign,
+upload, or publish release artifacts.
 
 ## Maintainer decisions before the first public release
 

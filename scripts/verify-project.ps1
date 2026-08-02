@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [switch]$SkipDocker
 )
@@ -10,9 +10,12 @@ $warnings = New-Object System.Collections.Generic.List[string]
 
 function Add-Error([string]$Message) { $errors.Add($Message) }
 function Add-Warning([string]$Message) { $warnings.Add($Message) }
+. (Join-Path $projectDir 'scripts\management-api.ps1')
+$verificationContainerName = 'palworld-server'
+try { $verificationContainerName = Get-ManagementContainerName -ProjectDirectory $projectDir } catch { Add-Error $_.Exception.Message }
 
 $requiredFiles = @(
-    ".env", ".env.example", "version.json", "docker-compose.yml", "start-docker.bat", "start-windows.bat", "install-windows-server.bat",
+    ".env", ".env.example", "version.json", "docker-compose.yml", "FIRST_RUN.bat", "start-docker.bat", "start-windows.bat", "install-windows-server.bat",
     "settings-panel.ps1", "web\index.html", "web\styles.css", "web\app.js", "package.json", "package-lock.json", "README.md", "README.en.md", "AGENTS.md",
     "desktop\PalworldConsole.Desktop\PalworldConsole.Desktop.csproj", "desktop\PalworldConsole.Desktop\Program.cs", "desktop\PalworldConsole.Desktop\packages.lock.json", "installer\PalworldServerConsole.wxs", "docs\desktop-app.md", "docs\quick-start.md", "docs\social-media-copy.md",
     "CHANGELOG.md", "docs\versioning-and-releases.md", "docs\compatibility.md",
@@ -20,11 +23,11 @@ $requiredFiles = @(
     "docs\maintenance-evidence.synthetic.json", "scripts\test-clean-checkout.ps1",
     "scripts\test-maintenance-readiness.ps1", "scripts\verify-maintenance-evidence.ps1",
     "scripts\compare-save-integrity.ps1",
-    "scripts\settings-catalog.ps1", "scripts\ensure-win-management-firewall.ps1", "scripts\ui-smoke.cjs", "scripts\test-i18n-parity.cjs", "scripts\build-desktop-app.ps1", "scripts\test-desktop-host.ps1", "scripts\test-desktop-installer.ps1", "scripts\test-windows-installer-bat.ps1",
-    "scripts\test-player-command-picker.cjs", "scripts\test-console-guided-actions.cjs", "scripts\test-compare-save-integrity.cjs", "scripts\test-runtime-orchestration-contract.ps1", "scripts\test-runtime-common-behavior.ps1",
-    "scripts\test-management-network-contract.ps1",
+    "scripts\settings-catalog.ps1", "scripts\ensure-win-management-firewall.ps1", "scripts\ui-smoke.cjs", "scripts\test-i18n-parity.cjs", "scripts\build-desktop-app.ps1", "scripts\test-desktop-host.ps1", "scripts\test-desktop-installer.ps1", "scripts\test-windows-installer-bat.ps1", "scripts\test-first-run-bat.ps1", "scripts\test-powershell-encoding.ps1",
+    "scripts\test-player-command-picker.cjs", "scripts\test-console-guided-actions.cjs", "scripts\test-compare-save-integrity.cjs", "scripts\test-runtime-orchestration-contract.ps1", "scripts\test-runtime-common-behavior.ps1", "scripts\test-recover-runtime-state-behavior.ps1", "scripts\test-env-migration.ps1",
+    "scripts\test-management-network-contract.ps1", "scripts\test-instance-isolation.ps1", "scripts\test-windows-rest-compatibility.ps1", "scripts\validate-launch-config.ps1", "scripts\test-launch-config.ps1", "scripts\test-tunnel-provider-catalog.ps1", "scripts\publish-local-release.ps1", "scripts\test-release-policy.ps1",
     "scripts\daily-log-collector.ps1", "scripts\player-session-times.ps1", "scripts\test-player-session-times.ps1",
-    "scripts\audit-public-release.ps1", "scripts\test-host-prerequisites.ps1", "scripts\test-web-console-boundary.ps1",
+    "scripts\audit-public-release.ps1", "scripts\test-host-prerequisites.ps1", "scripts\test-web-console-boundary.ps1", "scripts\test-powershell-encoding.ps1", "scripts\test-win-installer-preflight.ps1",
     "scripts\management-api.ps1", "scripts\networking.ps1", "scripts\tunnel-provider.ps1", "scripts\apply-preset.ps1",
     "scripts\bootstrap-first-run.ps1", "scripts\export-support-bundle.ps1", "scripts\build-release-bundle.ps1",
     "scripts\get-project-version.ps1", "scripts\test-version-consistency.ps1", "scripts\bump-version.ps1",
@@ -34,7 +37,7 @@ $requiredFiles = @(
     "docs\log-and-tunnel-diagnostics.md", "docs\architecture.md", "docs\getting-started\install.md",
     "docs\getting-started\networking.md", "docs\getting-started\saves.md", "docs\user-guide\daily-operations.md",
     "docs\troubleshooting\README.md", "presets\vanilla.env", "presets\casual-small-server.env", "presets\performance-conservative.env",
-    "providers\none\README.md", "providers\generic-process\README.md", "providers\sakurafrp\README.md"
+    "providers\none\README.md", "providers\none\provider.json", "providers\generic-process\README.md", "providers\generic-process\provider.json", "providers\sakurafrp\README.md", "providers\sakurafrp\provider.json", "scripts\tunnel-provider-catalog.ps1"
 )
 foreach ($relativePath in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $projectDir $relativePath) -PathType Leaf)) {
@@ -114,10 +117,10 @@ if (Test-Path -LiteralPath $envPath -PathType Leaf) {
 }
 
 foreach ($relativeScript in @("settings-panel.ps1", "scripts\settings-catalog.ps1",
-    "scripts\normalize-env.ps1", "scripts\mod-manager.ps1", "scripts\daily-log-collector.ps1", "scripts\player-session-times.ps1", "scripts\start-web-console.ps1", "scripts\test-player-session-times.ps1", "scripts\test-runtime-orchestration-contract.ps1", "scripts\test-runtime-common-behavior.ps1",
-    "scripts\audit-public-release.ps1", "scripts\test-host-prerequisites.ps1", "scripts\test-web-console-boundary.ps1", "scripts\build-desktop-app.ps1", "scripts\test-desktop-host.ps1", "scripts\test-desktop-installer.ps1", "scripts\test-windows-installer-bat.ps1",
-    "scripts\management-api.ps1", "scripts\networking.ps1", "scripts\tunnel-provider.ps1", "scripts\apply-preset.ps1", "scripts\bootstrap-first-run.ps1", "scripts\export-support-bundle.ps1", "scripts\build-release-bundle.ps1", "scripts\get-project-version.ps1", "scripts\test-version-consistency.ps1", "scripts\bump-version.ps1", "scripts\test-management-network-contract.ps1",
-    "scripts\runtime-common.ps1", "scripts\docker-runtime.ps1", "scripts\compile-settings.ps1",
+    "scripts\normalize-env.ps1", "scripts\mod-manager.ps1", "scripts\daily-log-collector.ps1", "scripts\player-session-times.ps1", "scripts\start-web-console.ps1", "scripts\test-player-session-times.ps1", "scripts\test-runtime-orchestration-contract.ps1", "scripts\test-runtime-common-behavior.ps1", "scripts\test-recover-runtime-state-behavior.ps1",
+    "scripts\audit-public-release.ps1", "scripts\test-host-prerequisites.ps1", "scripts\test-web-console-boundary.ps1", "scripts\build-desktop-app.ps1", "scripts\test-desktop-host.ps1", "scripts\test-desktop-installer.ps1", "scripts\test-windows-installer-bat.ps1", "scripts\test-first-run-bat.ps1", "scripts\test-powershell-encoding.ps1", "scripts\test-win-installer-preflight.ps1",
+    "scripts\management-api.ps1", "scripts\networking.ps1", "scripts\tunnel-provider-catalog.ps1", "scripts\tunnel-provider.ps1", "scripts\apply-preset.ps1", "scripts\bootstrap-first-run.ps1", "scripts\export-support-bundle.ps1", "scripts\build-release-bundle.ps1", "scripts\publish-local-release.ps1", "scripts\test-release-policy.ps1", "scripts\get-project-version.ps1", "scripts\test-version-consistency.ps1", "scripts\bump-version.ps1", "scripts\test-management-network-contract.ps1", "scripts\test-instance-isolation.ps1", "scripts\test-windows-rest-compatibility.ps1", "scripts\validate-launch-config.ps1", "scripts\test-launch-config.ps1", "scripts\test-tunnel-provider-catalog.ps1",
+    "scripts\runtime-common.ps1", "scripts\docker-runtime.ps1", "scripts\compile-settings.ps1", "scripts\measure-latency.ps1",
     "scripts\win-runtime.ps1", "scripts\install-win-server.ps1",
     "scripts\switch-runtime.ps1", "scripts\restore-snapshot.ps1",
     "scripts\compare-save-integrity.ps1",
@@ -169,7 +172,7 @@ if (Test-Path -LiteralPath $catalogScript -PathType Leaf) {
                 $templateValues[$matches[1].Trim()] = $matches[2].Trim().Trim('"').Trim("'")
             }
         }
-        foreach ($key in @("TZ", "UPDATE_ON_BOOT", "BACKUP_CRON_EXPRESSION", "OLD_BACKUP_DAYS", "REST_API_ENABLED", "RCON_ENABLED")) {
+        foreach ($key in @("TZ", "UPDATE_ON_BOOT", "BACKUP_CRON_EXPRESSION", "OLD_BACKUP_DAYS", "REST_API_ENABLED", "RCON_ENABLED", "WINDOWS_REST_COMPATIBILITY_MODE")) {
             if (-not $templateValues.ContainsKey($key)) {
                 Add-Error ".env.example is missing catalog default key: $key"
             } elseif ([string]$templateValues[$key] -cne [string]$catalog[$key].default) {
@@ -257,6 +260,9 @@ if (Test-Path -LiteralPath $composePath) {
     }
     if ($composeText -notmatch 'target:\s*\$\{PORT:-8211\}') {
         Add-Error "Compose game port mapping does not follow the editable PORT setting."
+    }
+    if ($composeText -notmatch 'container_name:\s*\$\{PROJECT_INSTANCE_ID:-palworld-server\}') {
+        Add-Error "Compose container identity does not follow PROJECT_INSTANCE_ID with the backward-compatible default."
     }
     if ($composeText -match 'target:\s*\$\{RCON_PORT:-25575\}' -and
         $composeText -notmatch 'host_ip:\s*127\.0\.0\.1') {
@@ -348,7 +354,7 @@ if ($node) {
         $app -notmatch [regex]::Escape("https://docs.palworldgame.com/settings-and-operation/configuration/")) {
         Add-Error "Per-setting help or its official documentation link is missing."
     }
-    if ($html -and -not ([System.IO.File]::ReadAllText((Join-Path $projectDir "README.md")) -match '\[English\]\(README\.en\.md\)')) {
+    if ($html -and -not ([System.IO.File]::ReadAllText((Join-Path $projectDir "README.md")) -match '\[[^\]]+\]\(README\.en\.md\)')) {
         Add-Error "README.md must link to the English self-hosting guide."
     }
     if ([regex]::Matches($app, 'function\s+formatDuration\s*\(').Count -ne 1) {
@@ -386,14 +392,21 @@ if ($node) {
         if ($ciWorkflow -notmatch [regex]::Escape('.\scripts\test-runtime-common-behavior.ps1')) {
             Add-Error 'Windows CI must run the disposable runtime-common behavior regression.'
         }
+        if ($ciWorkflow -notmatch [regex]::Escape('.\scripts\test-recover-runtime-state-behavior.ps1')) {
+            Add-Error 'Windows CI must run the disposable stale runtime-state recovery regression.'
+        }
         if ($ciWorkflow -notmatch [regex]::Escape('npm ci --ignore-scripts --no-audit --no-fund') -or
             $ciWorkflow -notmatch [regex]::Escape("require.resolve('playwright-core')")) {
             Add-Error 'Windows CI must install and resolve the declared browser-smoke library without running browser scripts.'
         }
-        if ($ciWorkflow -notmatch 'desktop-host-build:' -or
-            $ciWorkflow -notmatch [regex]::Escape('dotnet restore .\desktop\PalworldConsole.Desktop\PalworldConsole.Desktop.csproj --locked-mode') -or
-            $ciWorkflow -notmatch [regex]::Escape('dotnet build .\desktop\PalworldConsole.Desktop\PalworldConsole.Desktop.csproj --configuration Release --no-restore')) {
-            Add-Error 'Windows CI must restore the locked desktop host and compile it without a server runtime.'
+        foreach ($forbiddenCiToken in @('actions/setup-dotnet@', 'dotnet restore', 'dotnet build', 'dotnet publish', 'signtool', 'actions/upload-artifact', 'gh release', 'softprops/action-gh-release')) {
+            if ($ciWorkflow.Contains($forbiddenCiToken)) {
+                Add-Error "Windows CI must not build, sign, upload, or publish release artifacts: $forbiddenCiToken"
+            }
+        }
+        if ($ciWorkflow -notmatch [regex]::Escape('.\scripts\test-release-policy.ps1') -or
+            $ciWorkflow -notmatch [regex]::Escape('.\scripts\audit-public-release.ps1 -Strict')) {
+            Add-Error 'Windows CI must run the source-only release-policy and publication-audit checks.'
         }
         if ($ciWorkflow -notmatch [regex]::Escape('node scripts/test-player-command-picker.cjs') -or
             $ciWorkflow -notmatch [regex]::Escape('node scripts/test-console-guided-actions.cjs') -or
@@ -497,6 +510,58 @@ if (Test-Path -LiteralPath $windowsInstallerBatTest -PathType Leaf) {
     }
 }
 
+$firstRunBatTest = Join-Path $projectDir 'scripts\test-first-run-bat.ps1'
+if (Test-Path -LiteralPath $firstRunBatTest -PathType Leaf) {
+    try {
+        $LASTEXITCODE = 0
+        & $firstRunBatTest
+        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            Add-Error "First-run BAT contract failed with exit code $LASTEXITCODE."
+        }
+    } catch {
+        Add-Error "First-run BAT contract failed: $($_.Exception.Message)"
+    }
+}
+
+$envMigrationTest = Join-Path $projectDir 'scripts\test-env-migration.ps1'
+if (Test-Path -LiteralPath $envMigrationTest -PathType Leaf) {
+    try {
+        $LASTEXITCODE = 0
+        & $envMigrationTest
+        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            Add-Error "Environment migration contract failed with exit code $LASTEXITCODE."
+        }
+    } catch {
+        Add-Error "Environment migration contract failed: $($_.Exception.Message)"
+    }
+}
+
+$winInstallerPreflightTest = Join-Path $projectDir 'scripts\test-win-installer-preflight.ps1'
+if (Test-Path -LiteralPath $winInstallerPreflightTest -PathType Leaf) {
+    try {
+        $LASTEXITCODE = 0
+        & $winInstallerPreflightTest
+        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            Add-Error "Windows installer preflight contract failed with exit code $LASTEXITCODE."
+        }
+    } catch {
+        Add-Error "Windows installer preflight contract failed: $($_.Exception.Message)"
+    }
+}
+
+$powershellEncodingTest = Join-Path $projectDir 'scripts\test-powershell-encoding.ps1'
+if (Test-Path -LiteralPath $powershellEncodingTest -PathType Leaf) {
+    try {
+        $LASTEXITCODE = 0
+        & $powershellEncodingTest
+        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            Add-Error "PowerShell encoding contract failed with exit code $LASTEXITCODE."
+        }
+    } catch {
+        Add-Error "PowerShell encoding contract failed: $($_.Exception.Message)"
+    }
+}
+
 $runtimeOrchestrationContract = Join-Path $projectDir 'scripts\test-runtime-orchestration-contract.ps1'
 if (Test-Path -LiteralPath $runtimeOrchestrationContract -PathType Leaf) {
     try {
@@ -523,6 +588,19 @@ if (Test-Path -LiteralPath $runtimeCommonBehaviorTest -PathType Leaf) {
     }
 }
 
+$recoverRuntimeStateBehaviorTest = Join-Path $projectDir 'scripts\test-recover-runtime-state-behavior.ps1'
+if (Test-Path -LiteralPath $recoverRuntimeStateBehaviorTest -PathType Leaf) {
+    try {
+        $LASTEXITCODE = 0
+        & $recoverRuntimeStateBehaviorTest
+        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            Add-Error "Stale runtime-state recovery regression failed with exit code $LASTEXITCODE."
+        }
+    } catch {
+        Add-Error "Stale runtime-state recovery regression failed: $($_.Exception.Message)"
+    }
+}
+
 $managementNetworkContract = Join-Path $projectDir 'scripts\test-management-network-contract.ps1'
 if (Test-Path -LiteralPath $managementNetworkContract -PathType Leaf) {
     try {
@@ -533,6 +611,58 @@ if (Test-Path -LiteralPath $managementNetworkContract -PathType Leaf) {
         }
     } catch {
         Add-Error "Management/network source contract failed: $($_.Exception.Message)"
+    }
+}
+
+$instanceIsolationTest = Join-Path $projectDir 'scripts\test-instance-isolation.ps1'
+if (Test-Path -LiteralPath $instanceIsolationTest -PathType Leaf) {
+    try {
+        $LASTEXITCODE = 0
+        & $instanceIsolationTest
+        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            Add-Error "Instance isolation regression failed with exit code $LASTEXITCODE."
+        }
+    } catch {
+        Add-Error "Instance isolation regression failed: $($_.Exception.Message)"
+    }
+}
+
+$windowsRestCompatibilityTest = Join-Path $projectDir 'scripts\test-windows-rest-compatibility.ps1'
+if (Test-Path -LiteralPath $windowsRestCompatibilityTest -PathType Leaf) {
+    try {
+        $LASTEXITCODE = 0
+        & $windowsRestCompatibilityTest
+        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            Add-Error "Windows REST compatibility regression failed with exit code $LASTEXITCODE."
+        }
+    } catch {
+        Add-Error "Windows REST compatibility regression failed: $($_.Exception.Message)"
+    }
+}
+
+$launchConfigTest = Join-Path $projectDir 'scripts\test-launch-config.ps1'
+if (Test-Path -LiteralPath $launchConfigTest -PathType Leaf) {
+    try {
+        $LASTEXITCODE = 0
+        & $launchConfigTest
+        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            Add-Error "Launch configuration contract failed with exit code $LASTEXITCODE."
+        }
+    } catch {
+        Add-Error "Launch configuration contract failed: $($_.Exception.Message)"
+    }
+}
+
+$releasePolicyTest = Join-Path $projectDir 'scripts\test-release-policy.ps1'
+if (Test-Path -LiteralPath $releasePolicyTest -PathType Leaf) {
+    try {
+        $LASTEXITCODE = 0
+        & $releasePolicyTest
+        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            Add-Error "Release policy contract failed with exit code $LASTEXITCODE."
+        }
+    } catch {
+        Add-Error "Release policy contract failed: $($_.Exception.Message)"
     }
 }
 
@@ -735,7 +865,7 @@ if (Test-Path -LiteralPath $runtimeStatePath -PathType Leaf) {
         # Cross-check active runtime against actual processes
         $dockerRunning = $false
         try {
-            $inspect = & docker.exe inspect -f '{{.State.Running}}' palworld-server 2>$null
+            $inspect = & docker.exe inspect -f '{{.State.Running}}' $verificationContainerName 2>$null
             if ($LASTEXITCODE -eq 0 -and $inspect -eq 'true') { $dockerRunning = $true }
         } catch { }
 

@@ -20,6 +20,8 @@ for (const action of ['save', 'backup', 'players', 'tunnel', 'logs']) {
 }
 requireText(app, 'async function saveWorld()', 'Overview save action must share a reusable handler.');
 requireText(app, 'async function checkTunnel()', 'Overview tunnel action must share a reusable handler.');
+requireText(app, 'function configuredPortAction()', 'Port diagnostics must derive its message from the configured endpoints.');
+requireText(app, "if (entry.actionCode === 'checkPorts') return configuredPortAction();", 'Port diagnostics must not use fixed default port text.');
 requireText(app, 'function focusPlayerTable()', 'Overview player action must lead to the live player table.');
 requireText(app, "case 'logs': activatePanel('logs');", 'Overview diagnostics action must open the logs panel.');
 requireText(index, 'id="btnRconGuidePlayers"', 'RCON player guide is missing.');
@@ -51,6 +53,9 @@ requireText(panel, 'function Get-TunnelNetworkProbe', 'Dashboard tunnel probing 
 requireText(panel, 'Local network evidence was not observed within the bounded probe timeout.', 'Tunnel network-probe timeout must remain evidence-bounded.');
 requireText(panel, "Get-WindowsRuntimeLogs -Lines $lines", 'Windows runtime logs must not fall back to Docker Compose.');
 requireText(panel, "source = 'windows native runtime'", 'Windows log source must be explicit in dashboard diagnostics.');
+if (app.includes('SakuraFrp is not ready:') || app.includes('SakuraFrp is running, but a newer data-connection error')) {
+  throw new Error('Tunnel diagnostics must not hard-code SakuraFrp message prefixes.');
+}
 if (app.includes('Applying changes recreates the container') || index.includes('重建容器')) {
   throw new Error('Windows-capable settings workflow still exposes a Docker-only restart notice.');
 }

@@ -3,7 +3,7 @@ services:
     # Pinned from the locally verified 2026-07-23 image. Update intentionally;
     # do not silently follow a mutable latest tag.
     image: thijsvanloef/palworld-server-docker@sha256:401d3eb5c053bcd72949e1ede8c4e38be5e5ad66be7272ac37940706df0aeb2f
-    container_name: palworld-server
+    container_name: ${PROJECT_INSTANCE_ID:-palworld-server}
     restart: unless-stopped
     stop_grace_period: 2m
     ports:

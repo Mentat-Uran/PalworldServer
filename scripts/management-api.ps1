@@ -39,6 +39,45 @@ function ConvertTo-ManagementPort {
     return $parsed
 }
 
+function Get-WindowsRestCompatibilityMode {
+    param([System.Collections.IDictionary]$Environment)
+    $mode = if ($null -ne $Environment -and $Environment.ContainsKey('WINDOWS_REST_COMPATIBILITY_MODE') -and $Environment['WINDOWS_REST_COMPATIBILITY_MODE']) {
+        ([string]$Environment['WINDOWS_REST_COMPATIBILITY_MODE']).Trim().ToLowerInvariant()
+    } else {
+        'ini-only'
+    }
+    if ($mode -notin @('compat', 'ini-only')) {
+        throw 'WINDOWS_REST_COMPATIBILITY_MODE must be compat or ini-only.'
+    }
+    return $mode
+}
+
+function Get-ManagementContainerName {
+    param(
+        [Parameter(Mandatory)][string]$ProjectDirectory,
+        [System.Collections.IDictionary]$Environment
+    )
+    if ($null -eq $Environment) { $Environment = Read-ManagementEnv -ProjectDirectory $ProjectDirectory }
+    $name = if ($Environment.ContainsKey('PROJECT_INSTANCE_ID') -and $Environment['PROJECT_INSTANCE_ID']) {
+        [string]$Environment['PROJECT_INSTANCE_ID']
+    } else {
+        'palworld-server'
+    }
+    if ($name -notmatch '^[a-z0-9][a-z0-9_.-]{0,62}$') {
+        throw 'PROJECT_INSTANCE_ID must be a Docker-safe name: lowercase letters, numbers, dot, underscore, or hyphen; maximum 63 characters.'
+    }
+    return $name
+}
+
+function Get-ManagementMutexName {
+    param(
+        [Parameter(Mandatory)][string]$ProjectDirectory,
+        [System.Collections.IDictionary]$Environment
+    )
+    $containerName = Get-ManagementContainerName -ProjectDirectory $ProjectDirectory -Environment $Environment
+    return "Global\PalworldServerRuntime_$containerName"
+}
+
 function Get-ManagementEndpointConfig {
     param(
         [Parameter(Mandatory)][string]$ProjectDirectory,
@@ -55,6 +94,8 @@ function Get-ManagementEndpointConfig {
         throw 'REST_API_PORT and RCON_PORT must be different when both management APIs are enabled.'
     }
     $config = [ordered]@{
+        containerName = Get-ManagementContainerName -ProjectDirectory $ProjectDirectory -Environment $Environment
+        windowsRestCompatibilityMode = Get-WindowsRestCompatibilityMode -Environment $Environment
         restEnabled = $restEnabled
         restPort = $restPort
         restBindAddress = '127.0.0.1'

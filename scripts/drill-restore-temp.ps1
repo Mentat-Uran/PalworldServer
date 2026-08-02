@@ -1,4 +1,4 @@
-# Temporary restore drill script — extracts a Full snapshot to a temp dir
+﻿# Temporary restore drill script — extracts a Full snapshot to a temp dir
 # and verifies SaveGames fingerprint without touching the real SaveGames.
 # Safe to delete after the drill.
 param([string]$SnapshotName = '20260730-005010-Full-pre-windows-to-docker.tar.gz')

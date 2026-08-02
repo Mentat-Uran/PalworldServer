@@ -11,7 +11,8 @@ if (-not (Get-Command Get-RuntimeState -ErrorAction SilentlyContinue)) {
 
 $projectDir = Split-Path -Parent $PSScriptRoot
 $composeFile = Join-Path $projectDir 'docker-compose.yml'
-$containerName = 'palworld-server'
+$composeServiceName = 'palworld-server'
+$containerName = Get-ManagementContainerName -ProjectDirectory $projectDir
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -73,7 +74,7 @@ function Start-DockerRuntime {
     # Wait for container running state (max 120s)
     $waitCount = 0
     while ($waitCount -lt 60) {
-        $inspect = Invoke-DockerProcess 'inspect -f "{{.State.Running}}" palworld-server' 5000
+        $inspect = Invoke-DockerProcess "inspect -f `"{{.State.Running}}`" $containerName" 5000
         if ($inspect.ExitCode -eq 0 -and $inspect.Stdout.Trim() -eq 'true') { break }
         Start-Sleep -Seconds 2
         $waitCount++
@@ -84,7 +85,7 @@ function Start-DockerRuntime {
     }
 
     # Get PID
-    $pidResult = Invoke-DockerProcess 'inspect -f "{{.State.Pid}}" palworld-server' 5000
+    $pidResult = Invoke-DockerProcess "inspect -f `"{{.State.Pid}}`" $containerName" 5000
     $containerPid = $null
     if ($pidResult.ExitCode -eq 0) {
         $pidStr = $pidResult.Stdout.Trim()
@@ -110,7 +111,7 @@ function Stop-DockerRuntime {
 }
 
 function Get-DockerRuntimeHealth {
-    $inspect = Invoke-DockerProcess 'inspect -f "{{.State.Running}}|{{.State.Status}}|{{.State.Health.Status}}" palworld-server' 5000
+    $inspect = Invoke-DockerProcess "inspect -f `"{{.State.Running}}|{{.State.Status}}|{{.State.Health.Status}}`" $containerName" 5000
     if ($inspect.ExitCode -ne 0) {
         return @{ status = 'unreachable'; detail = $inspect.Stderr.Trim() }
     }
@@ -167,7 +168,7 @@ function Get-DockerRuntimePlayers {
 
 function Get-DockerRuntimeLogs {
     param([int]$Lines = 300)
-    $r = Invoke-Compose "logs --tail $Lines --no-color palworld-server" 30000
+    $r = Invoke-Compose "logs --tail $Lines --no-color $composeServiceName" 30000
     if ($r.ExitCode -eq 0) {
         return @{ ok = $true; lines = $r.Stdout -split "`r?`n" }
     }
@@ -199,7 +200,7 @@ function Invoke-DockerRuntimeOperation {
 }
 
 function Invoke-DockerRuntimeBackup {
-    $r = Invoke-Compose 'exec -T palworld-server backup' 300000
+    $r = Invoke-Compose "exec -T $composeServiceName backup" 300000
     if ($r.ExitCode -eq 0) {
         return @{ ok = $true; detail = $r.Stdout.Trim() }
     }
@@ -214,7 +215,7 @@ function Invoke-DockerRcon {
     param([Parameter(Mandatory)][string]$Command, [int]$Timeout = 10)
     # Use docker compose exec rcon-cli if available, else direct rcon via TCP
     # The community image ships rcon-cli; rely on it.
-    $r = Invoke-Compose "exec -T palworld-server rcon-cli `"$Command`"" ($Timeout * 1000 + 5000)
+    $r = Invoke-Compose "exec -T $composeServiceName rcon-cli `"$Command`"" ($Timeout * 1000 + 5000)
     if ($r.ExitCode -eq 0) {
         return @{ ok = $true; output = $r.Stdout.Trim() }
     }
@@ -248,7 +249,7 @@ function Test-DockerRuntimeDeps {
 
 function Get-DockerRuntimeMetrics {
     <# Returns CPU/memory metrics for the container. #>
-    $r = Invoke-DockerProcess 'stats --no-stream --format "{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}" palworld-server' 15000
+    $r = Invoke-DockerProcess "stats --no-stream --format `"{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}`" $containerName" 15000
     if ($r.ExitCode -ne 0) {
         return @{ ok = $false; error = $r.Stderr.Trim() }
     }

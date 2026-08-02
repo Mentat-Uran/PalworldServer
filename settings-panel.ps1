@@ -23,6 +23,7 @@ $pidFile = "$projectDir\.settings-panel.pid"
 $portFile = "$projectDir\.settings-panel.port"
 $modManagerScript = "$projectDir\scripts\mod-manager.ps1"
 $settingsCatalogScript = "$projectDir\scripts\settings-catalog.ps1"
+$composeServiceName = "palworld-server"
 $containerName = "palworld-server"
 $diagnosticsDir = "$projectDir\data\diagnostics"
 $incidentFile = "$diagnosticsDir\incidents.jsonl"
@@ -64,6 +65,7 @@ $editableFields = New-SettingsCatalog
 . (Join-Path $projectDir 'scripts\networking.ps1')
 . (Join-Path $projectDir 'scripts\docker-runtime.ps1')
 . (Join-Path $projectDir 'scripts\win-runtime.ps1')
+$containerName = Get-ManagementContainerName -ProjectDirectory $projectDir
 
 # ===== Helpers =====
 
@@ -644,7 +646,7 @@ function Invoke-RuntimeSaveAction() {
     $runtime = Get-ActiveRuntime
     if ($runtime -eq 'windows') {
         $r = Invoke-WindowsRuntimeSave -Timeout 30
-        return @{ ok = [bool]$r.ok; method = 'windows-rest'; error = $r.error }
+        return @{ ok = [bool]$r.ok; method = $r.method; fallback = [bool]$r.fallback; restError = $r.restError; code = $r.code; error = $r.error }
     }
     if ($runtime -eq 'docker') { return Invoke-DockerRuntimeSave -Timeout 30 }
     return @{ ok = $false; error = "No active runtime" }
@@ -657,6 +659,11 @@ function Invoke-RuntimeManagementOperation {
     )
     $runtime = Get-ActiveRuntime
     if ($runtime -notin @('docker','windows')) { return @{ ok = $false; code = 'no-active-runtime'; error = 'No active runtime.' } }
+    if ($runtime -eq 'windows' -and $Operation -ne 'shutdown') {
+        $result = Invoke-WindowsRuntimeOperation -Operation $Operation -Payload $Payload
+        $result.runtime = $runtime
+        return $result
+    }
     $result = Invoke-ManagementOperation -ProjectDirectory $projectDir -Operation $Operation -Payload $Payload
     if ($result.ok) {
         return @{ ok = $true; method = 'rest'; runtime = $runtime; operation = $Operation; content = $result.content }
@@ -947,7 +954,7 @@ function Get-PlayerCount($status) {
     }
 
     try {
-        $restOut = Invoke-Compose "exec -T $containerName rest-cli players" 15000
+        $restOut = Invoke-Compose "exec -T $composeServiceName rest-cli players" 15000
         if ($restOut.ExitCode -eq 0 -and $restOut.Stdout) {
             $data = Parse-Json $restOut.Stdout
             if ($data -is [System.Collections.IDictionary] -and $data.ContainsKey("players")) {
@@ -978,7 +985,7 @@ function Get-CollectionCount($value) {
 . (Join-Path $PSScriptRoot 'scripts\player-session-times.ps1')
 
 function Get-ContainerState() {
-    $ps = Invoke-Docker 'ps -a --filter name=palworld-server --format "{{.Status}}"'
+    $ps = Invoke-Docker "ps -a --filter name=$containerName --format `"{{.Status}}`""
     $statusLine = ($ps.Stdout -split "`n" | Where-Object { $_ -ne "" }) -join ""
     $status = "unknown"
     $health = "unknown"
@@ -1007,7 +1014,7 @@ function Get-ContainerState() {
     $cpuLimit = [Environment]::ProcessorCount
     $memLimit = 0
     try {
-        $resourceConfig = Invoke-Docker 'inspect palworld-server --format "{{.HostConfig.NanoCpus}}|{{.HostConfig.Memory}}"'
+        $resourceConfig = Invoke-Docker "inspect $containerName --format `"{{.HostConfig.NanoCpus}}|{{.HostConfig.Memory}}`""
         if ($resourceConfig.ExitCode -eq 0 -and $resourceConfig.Stdout -match '^([0-9]+)\|([0-9]+)') {
             $nanoCpus = [double]$matches[1]
             $memoryBytes = [double]$matches[2]
@@ -1019,7 +1026,7 @@ function Get-ContainerState() {
         try { $memLimit = [math]::Round((Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory / 1MB, 0) } catch { $memLimit = 0 }
     }
     if ($status -in @("running", "starting")) {
-        $stats = Invoke-Docker 'stats palworld-server --no-stream --format "{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}"'
+        $stats = Invoke-Docker "stats $containerName --no-stream --format `"{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}`""
         $line = ($stats.Stdout -split "`n" | Where-Object { $_ -ne "" }) -join ""
         # Format: "15.92%|940.9MiB / 16GiB|11.49%"
         if ($line -match "([\d.]+)%\|([\d.]+)([A-Za-z]+)\s*/\s*([\d.]+)([A-Za-z]+)\|([\d.]+)%") {
@@ -1118,7 +1125,8 @@ function Get-WindowsContainerState() {
             $mem = [math]::Round($proc.WorkingSet64 / 1MB, 0)
             $memPct = [math]::Round(($mem / $memLimit) * 100, 1)
 
-            # Health via REST /info (Windows server has no /health endpoint)
+            # Health via REST /info, or exact process/game-UDP readiness when
+            # the current Windows build does not expose native REST.
             $h = Get-WindowsRuntimeHealth
             if ($h.status -eq 'healthy') { $health = 'healthy' }
             elseif ($h.status -eq 'degraded') { $health = 'unhealthy' }
@@ -1176,7 +1184,7 @@ function Get-RuntimeContainerState() {
 
 function Get-RestData([string]$command) {
     try {
-        $result = Invoke-Compose "exec -T $containerName rest-cli $command" 15000
+        $result = Invoke-Compose "exec -T $composeServiceName rest-cli $command" 15000
         if ($result.ExitCode -ne 0 -or -not $result.Stdout.Trim()) {
             return @{ ok = $false; error = ($result.Stderr + " " + $result.Stdout).Trim() }
         }
@@ -1425,6 +1433,7 @@ function Get-Dashboard {
     $info = @{ ok = $false; error = "Container is not running." }
     $metrics = @{ ok = $false; error = "Container is not running." }
     $playersResult = @{ ok = $false; error = "Container is not running." }
+    $windowsHealth = $null
     if ($state.status -in @("running", "starting")) {
         if ($activeRuntime -eq 'windows') {
             # Windows native: use HTTP REST with Basic auth (no docker exec)
@@ -1438,6 +1447,7 @@ function Get-Dashboard {
                 # Normalize to hashtable shape expected by downstream code
                 $playersResult.data = @{ players = @($parsed.players) }
             }
+            $windowsHealth = Get-WindowsRuntimeHealth
         } else {
             $info = Get-RestData "info"
             $metrics = Get-RestData "metrics"
@@ -1501,7 +1511,15 @@ function Get-Dashboard {
         $warnings += if ($activeRuntime -eq 'windows') { "Windows runtime is not running." } else { "Container is not fully running." }
     }
     if ($state.health -notin @("healthy", "none")) { $warnings += "Runtime health is $($state.health)." }
-    if (-not $info.ok -or -not $metrics.ok) { $warnings += "Palworld REST status is unavailable." }
+    if (-not $info.ok -or -not $metrics.ok) {
+        if ($activeRuntime -eq 'windows' -and $null -ne $windowsHealth -and $windowsHealth.management.managementAvailable) {
+            $warnings += "Palworld REST is unavailable; local management fallback is $($windowsHealth.management.fallback)."
+        } elseif ($activeRuntime -eq 'windows' -and $null -ne $windowsHealth) {
+            $warnings += "Palworld REST is unavailable and no confirmed local management fallback is enabled."
+        } else {
+            $warnings += "Palworld REST status is unavailable."
+        }
+    }
     if ($inspectState.ContainsKey("OOMKilled") -and [bool]$inspectState["OOMKilled"]) {
         $warnings += "The container was OOM-killed."
     }
@@ -1571,17 +1589,23 @@ function Get-Dashboard {
                 configured = ($envVars["REST_API_ENABLED"] -match "^(?i:true)$")
                 reachable = [bool]$info.ok
                 port = $envVars["REST_API_PORT"]
+                compatibilityMode = [string]$management.windowsRestCompatibilityMode
+                readiness = if ($null -ne $windowsHealth) { [string]$windowsHealth.readiness } else { if ($info.ok) { 'REST' } else { 'unavailable' } }
             }
             rcon = [ordered]@{
                 configured = [bool]$management.legacyRconEnabled
                 port = $management.rconPort
                 exposure = "127.0.0.1 only"
                 deprecated = $true
+                listening = if ($null -ne $windowsHealth) { [bool]$windowsHealth.management.rconListening } else { $false }
             }
             management = [ordered]@{
                 restEnabled = [bool]$management.restEnabled
                 restPort = $management.restPort
+                windowsRestCompatibilityMode = [string]$management.windowsRestCompatibilityMode
                 legacyRconEnabled = [bool]$management.legacyRconEnabled
+                fallback = if ($null -ne $windowsHealth) { [string]$windowsHealth.management.fallback } else { 'none' }
+                managementAvailable = if ($null -ne $windowsHealth) { [bool]$windowsHealth.management.managementAvailable } else { [bool]$info.ok }
                 networkMode = $networkStatus.mode
                 tunnelProvider = $networkStatus.provider
             }
@@ -1975,7 +1999,7 @@ function Invoke-Rcon([string]$cmd) {
     }
 
     $escaped = $cmd -replace '"','\"'
-    $r = Invoke-Compose "exec -T palworld-server rcon-cli ""$escaped"""
+    $r = Invoke-Compose "exec -T $composeServiceName rcon-cli ""$escaped"""
     if ($r.ExitCode -ne 0) {
         return @{ ok = $false; error = ($r.Stderr + " " + $r.Stdout).Trim() }
     }
@@ -1987,7 +2011,7 @@ function Invoke-Save() {
 }
 
 function Invoke-Backup() {
-    $r = Invoke-Compose "exec -T $containerName backup" 180000
+    $r = Invoke-Compose "exec -T $composeServiceName backup" 180000
     if ($r.ExitCode -ne 0) {
         return @{ ok = $false; error = ($r.Stderr + " " + $r.Stdout).Trim() }
     }
@@ -1995,7 +2019,7 @@ function Invoke-Backup() {
 }
 
 function Stop-Server() {
-    $r = Invoke-Compose "stop -t 120 $containerName" 150000
+    $r = Invoke-Compose "stop -t 120 $composeServiceName" 150000
     if ($r.ExitCode -ne 0) {
         return @{ ok = $false; error = ($r.Stderr + " " + $r.Stdout).Trim() }
     }
@@ -2004,7 +2028,7 @@ function Stop-Server() {
 
 function Restart-Server() {
     # Recreate applies env changes without an explicit down window and preserves the volume.
-    $r = Invoke-Compose "up -d --force-recreate --remove-orphans $containerName" 240000
+    $r = Invoke-Compose "up -d --force-recreate --remove-orphans $composeServiceName" 240000
     if ($r.ExitCode -ne 0) {
         return @{ ok = $false; error = ($r.Stderr + " " + $r.Stdout).Trim() }
     }
@@ -2209,6 +2233,7 @@ while ($listener.IsListening) {
         elseif ($method -eq "POST" -and $path -eq "/api/save") {
             $result = Invoke-RuntimeSaveAction
             Write-PanelEvent $(if ($result.ok) { "INFO" } else { "ERROR" }) "World save requested; ok=$($result.ok)."
+            if (-not $result.ok -and $result.code -eq 'management-unavailable') { $res.StatusCode = 409 }
             Send-Json $res $result
         }
         elseif ($method -eq "GET" -and $path -eq "/api/logs") {
@@ -2292,7 +2317,7 @@ while ($listener.IsListening) {
             }
             $result = Invoke-RuntimeManagementOperation -Operation $operation -Payload $payload
             Write-PanelEvent $(if ($result.ok) { 'INFO' } else { 'ERROR' }) "REST management operation completed: operation=$operation; runtime=$(Get-ActiveRuntime); ok=$($result.ok)."
-            if (-not $result.ok -and $result.code -eq 'rest-disabled') { $res.StatusCode = 409 }
+            if (-not $result.ok -and $result.code -in @('rest-disabled','management-unavailable')) { $res.StatusCode = 409 }
             Send-Json $res $result
         }
         elseif ($method -eq "POST" -and $path -eq "/api/rcon") {

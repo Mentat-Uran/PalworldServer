@@ -1,8 +1,10 @@
 # Architecture
 
-Palworld Local Server Console is a single-project, single-instance manager.
-Docker and Windows-native Palworld runtimes are alternatives and share one
-save boundary; they must not run concurrently.
+Palworld Local Server Console manages one runtime boundary per project
+directory. Docker and Windows-native Palworld runtimes are alternatives within
+that project and share one save boundary; they must not run concurrently.
+Multiple project directories can coexist when `PROJECT_INSTANCE_ID` and all
+published/local management ports are unique.
 
 ## Boundaries
 
@@ -12,7 +14,7 @@ save boundary; they must not run concurrently.
 - `scripts/win-runtime.ps1` and `scripts/docker-runtime.ps1` implement the
   same runtime operations.
 - `scripts/runtime-common.ps1` owns atomic runtime state, mutex, incidents,
-  and switch evidence.
+  and switch evidence. The mutex is scoped to `PROJECT_INSTANCE_ID`.
 - `scripts/tunnel-provider.ps1` owns only provider processes recorded by this
   project. The default provider is `none`.
 - `data/Pal/Saved/SaveGames` is the shared save boundary. It is private and

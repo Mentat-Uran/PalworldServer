@@ -1,5 +1,5 @@
 {
-  "version": "0.2.0",
-  "channel": "stable",
-  "minSupportedWindows": "Windows 10 22H2"
+    "version":  "0.2.1",
+    "channel":  "stable",
+    "minSupportedWindows":  "Windows 10 22H2"
 }

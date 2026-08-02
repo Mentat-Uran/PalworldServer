@@ -1,0 +1,8 @@
+{
+  "id": "sakurafrp",
+  "displayName": "Sakura FRP",
+  "kind": "process",
+  "autoDiscoverExecutables": [
+    "SakuraLauncher.exe"
+  ]
+}

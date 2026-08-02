@@ -7,12 +7,54 @@ set "PROJECT_DIR=%PROJECT_DIR:~0,-1%"
 
 if /i "%~1"=="stop" goto stop
 
+echo [1/7] Validating configured ports and network mode...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\scripts\validate-launch-config.ps1"
+if errorlevel 1 (
+    echo [FAIL] .env port or network configuration is invalid.
+    echo        No runtime, tunnel, or Web Console was started.
+    pause
+    exit /b 1
+)
+set "GAME_PORT="
+set "CONTAINER_NAME="
+set "QUERY_PORT="
+set "REST_PORT="
+set "REST_ENABLED="
+set "RCON_PORT="
+set "RCON_ENABLED="
+set "NETWORK_MODE="
+set "TUNNEL_PROVIDER="
+for /f "usebackq tokens=1,* delims==" %%A in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\scripts\validate-launch-config.ps1" -Summary`) do (
+    if /i "%%A"=="GAME_PORT" set "GAME_PORT=%%B"
+    if /i "%%A"=="CONTAINER_NAME" set "CONTAINER_NAME=%%B"
+    if /i "%%A"=="QUERY_PORT" set "QUERY_PORT=%%B"
+    if /i "%%A"=="REST_API_PORT" set "REST_PORT=%%B"
+    if /i "%%A"=="REST_ENABLED" set "REST_ENABLED=%%B"
+    if /i "%%A"=="RCON_PORT" set "RCON_PORT=%%B"
+    if /i "%%A"=="RCON_ENABLED" set "RCON_ENABLED=%%B"
+    if /i "%%A"=="NETWORK_MODE" set "NETWORK_MODE=%%B"
+    if /i "%%A"=="TUNNEL_PROVIDER" set "TUNNEL_PROVIDER=%%B"
+)
+if not defined GAME_PORT exit /b 1
+if not defined CONTAINER_NAME exit /b 1
+
+echo.
+echo [2/7] Checking Docker, WSL2, disk, memory, and tunnel prerequisites...
+set "REQUIRE_TUNNEL="
+if /i "%NETWORK_MODE%"=="tunnel" set "REQUIRE_TUNNEL=-RequireTunnel"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\scripts\test-host-prerequisites.ps1" -Runtime docker %REQUIRE_TUNNEL%
+if errorlevel 1 (
+    echo [FAIL] Host prerequisites are not ready. No runtime, tunnel, or Web Console was started.
+    pause
+    exit /b 1
+)
+
 echo ============================================
 echo   Palworld Server (Docker) - Starting...
 echo ============================================
 echo.
 
-echo [1/5] Protected runtime switch: Docker
+echo [3/7] Protected runtime switch: Docker
 cd /d "%PROJECT_DIR%"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\scripts\switch-runtime.ps1" -To docker -FullSnapshot
 set "SWITCH_EXIT=!ERRORLEVEL!"
@@ -26,11 +68,11 @@ if "!SWITCH_EXIT!"=="2" (
 )
 
 echo.
-echo [2/5] Waiting for container to be running...
+echo [4/7] Waiting for container to be running...
 set /a WAIT_COUNT=0
 :wait_container
 set "STATE="
-for /f "delims=" %%i in ('docker inspect -f "{{.State.Running}}" palworld-server 2^>nul') do set STATE=%%i
+for /f "delims=" %%i in ('docker inspect -f "{{.State.Running}}" "%CONTAINER_NAME%" 2^>nul') do set STATE=%%i
 if /i not "!STATE!"=="true" (
     set /a WAIT_COUNT+=1
     if !WAIT_COUNT! GEQ 60 (
@@ -45,7 +87,7 @@ if /i not "!STATE!"=="true" (
 echo [OK] Container is running.
 
 echo.
-echo [3/5] Starting configured tunnel provider...
+echo [5/7] Starting configured tunnel provider...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\scripts\tunnel-provider.ps1" -Action Start
 if errorlevel 1 (
     echo [FAIL] Configured tunnel provider could not be started.
@@ -56,7 +98,7 @@ if errorlevel 1 (
 echo [OK] Tunnel provider step completed. Provider none is a safe no-op.
 
 echo.
-echo [4/5] Starting Web Console...
+echo [6/7] Starting Web Console...
 set "PANEL_PORT="
 for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\scripts\start-web-console.ps1"`) do set "PANEL_PORT=%%P"
 if not defined PANEL_PORT (
@@ -66,7 +108,7 @@ if not defined PANEL_PORT (
 )
 
 echo.
-echo [5/5] Starting Daily Log Archive...
+echo [7/7] Starting Daily Log Archive...
 powershell -NoProfile -Command "$pidPath = '%PROJECT_DIR%\.daily-log-collector.pid'; if (Test-Path -LiteralPath $pidPath) { $id = 0; [void][int]::TryParse((Get-Content -LiteralPath $pidPath -Raw).Trim(), [ref]$id); $p = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $id) -ErrorAction SilentlyContinue; if ($p -and $p.CommandLine -like '*daily-log-collector.ps1*') { exit 0 } }; exit 1" 2>nul
 if errorlevel 1 (
     start "" powershell -WindowStyle Hidden -ExecutionPolicy Bypass -NoProfile -File "%PROJECT_DIR%\scripts\daily-log-collector.ps1"
@@ -80,7 +122,11 @@ if defined PANEL_PORT start "" "http://localhost:%PANEL_PORT%/"
 echo.
 echo ============================================
 echo   All started (Docker mode).
-echo   - Game: 127.0.0.1:8211
+echo   - Instance: %CONTAINER_NAME%
+echo   - Game: 127.0.0.1:%GAME_PORT%/UDP (query %QUERY_PORT%)
+echo   - REST: 127.0.0.1:%REST_PORT%/TCP (enabled=%REST_ENABLED%)
+echo   - RCON: 127.0.0.1:%RCON_PORT%/TCP (legacy=%RCON_ENABLED%)
+echo   - Network: %NETWORK_MODE% (provider=%TUNNEL_PROVIDER%)
 echo   - Web Console: http://localhost:%PANEL_PORT%/
 echo   - Tunnel: check the configured provider; external access is not verified here
 echo   - Daily logs: data\log-archive\YYYY-MM-DD.txt

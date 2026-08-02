@@ -1,0 +1,6 @@
+{
+  "id": "none",
+  "displayName": "No tunnel provider",
+  "kind": "none",
+  "autoDiscoverExecutables": []
+}

@@ -41,9 +41,9 @@ foreach ($required in @(
     'desktop/PalworldConsole.Desktop/PalworldConsole.Desktop.csproj', 'desktop/PalworldConsole.Desktop/Program.cs', 'desktop/PalworldConsole.Desktop/packages.lock.json', 'installer/PalworldServerConsole.wxs', 'install-windows-server.bat', 'docs/desktop-app.md', 'docs/quick-start.md', 'docs/social-media-copy.md', 'scripts/test-windows-installer-bat.ps1',
     'version.json', 'docs/public-release-readiness.md', 'docs/architecture.md', 'docs/getting-started/install.md',
     'docs/getting-started/networking.md', 'docs/getting-started/saves.md', 'docs/user-guide/daily-operations.md',
-    'docs/troubleshooting/README.md', 'providers/none/README.md', 'providers/generic-process/README.md', 'providers/sakurafrp/README.md',
-    'scripts/management-api.ps1', 'scripts/networking.ps1', 'scripts/tunnel-provider.ps1', 'scripts/bootstrap-first-run.ps1',
-    'scripts/export-support-bundle.ps1', 'scripts/build-release-bundle.ps1', 'scripts/test-version-consistency.ps1', 'scripts/test-management-network-contract.ps1',
+    'docs/troubleshooting/README.md', 'providers/none/README.md', 'providers/none/provider.json', 'providers/generic-process/README.md', 'providers/generic-process/provider.json', 'providers/sakurafrp/README.md', 'providers/sakurafrp/provider.json',
+    'scripts/management-api.ps1', 'scripts/networking.ps1', 'scripts/tunnel-provider-catalog.ps1', 'scripts/tunnel-provider.ps1', 'scripts/test-tunnel-provider-catalog.ps1', 'scripts/bootstrap-first-run.ps1',
+    'scripts/export-support-bundle.ps1', 'scripts/build-release-bundle.ps1', 'scripts/publish-local-release.ps1', 'scripts/test-release-policy.ps1', 'scripts/test-version-consistency.ps1', 'scripts/test-management-network-contract.ps1', 'scripts/test-instance-isolation.ps1', 'scripts/test-windows-rest-compatibility.ps1', 'scripts/validate-launch-config.ps1', 'scripts/test-launch-config.ps1', 'scripts/test-win-installer-preflight.ps1', 'scripts/test-env-migration.ps1', 'scripts/test-recover-runtime-state-behavior.ps1',
     '.github/PULL_REQUEST_TEMPLATE.md',
     '.github/ISSUE_TEMPLATE/bug_report.md', '.github/ISSUE_TEMPLATE/feature_request.md'
 )) {

@@ -13,3 +13,9 @@ requires an elevated PowerShell; the Web Console itself remains loopback-only.
 The installer shows SteamCMD output as it arrives, verifies the existing
 installation on repeat runs, compiles the settings, checks the save junction,
 and applies the configured management firewall gate.
+
+For an existing project upgraded from an older configuration, run
+`scripts\normalize-env.ps1` during a maintenance window before compiling or
+starting the server. It creates a private backup under
+`data\diagnostics\env-migrations`, migrates legacy setting names, fills only
+missing values from `.env.example`, and preserves explicit operator choices.

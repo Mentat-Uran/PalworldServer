@@ -17,7 +17,7 @@ New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
 
 $rootFiles = @(
     '.env.example','docker-compose.yml','docker-compose.override.example.yml',
-    'install-windows-server.bat','start-windows.bat','start-docker.bat',
+    'FIRST_RUN.bat','install-windows-server.bat','start-windows.bat','start-docker.bat',
     'README.md','README.en.md','CHANGELOG.md','LICENSE','SECURITY.md','SUPPORT.md',
     'CONTRIBUTING.md','GOVERNANCE.md','CODE_OF_CONDUCT.md','package.json','package-lock.json',
     'version.json'
@@ -42,16 +42,6 @@ foreach ($desktopFile in @('app.manifest', 'packages.lock.json', 'PalworldConsol
     if (-not (Test-Path -LiteralPath $desktopPath -PathType Leaf)) { throw "Desktop source file is missing: $desktopFile" }
     Copy-Item -LiteralPath $desktopPath -Destination (Join-Path $desktopStage $desktopFile) -Force
 }
-$firstRun = @'
-@echo off
-setlocal
-cd /d "%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\bootstrap-first-run.ps1" %*
-if errorlevel 1 pause
-exit /b %errorlevel%
-'@
-[System.IO.File]::WriteAllText((Join-Path $stageDir 'FIRST_RUN.bat'), $firstRun, [System.Text.Encoding]::ASCII)
-
 if ($DesktopPublishDir) {
     if (-not (Test-Path -LiteralPath $DesktopPublishDir -PathType Container)) { throw "Desktop publish directory not found: $DesktopPublishDir" }
     $desktopTarget = Join-Path $stageDir 'desktop-app'

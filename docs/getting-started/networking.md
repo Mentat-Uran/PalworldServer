@@ -11,3 +11,20 @@ optional and disabled by default. See the official [Sakura FRP UDP FAQ](https://
 
 The local console can report a process, listener, and provider state. Only an
 external player test proves that an outside player can join.
+
+Provider choices are discovered from `providers/*/provider.json`. The built-in
+`generic-process` provider accepts any explicitly configured launcher:
+
+```env
+NETWORK_MODE=tunnel
+TUNNEL_PROVIDER=generic-process
+TUNNEL_EXECUTABLE=C:\Path\to\your-provider.exe
+TUNNEL_ARGUMENTS=your provider arguments
+TUNNEL_LOCAL_PORT=8211
+```
+
+To add another provider to a local checkout, add a lowercase provider folder
+with an `id`, `displayName`, `kind`, and optional `autoDiscoverExecutables` in
+`provider.json`. Do not put tokens or tunnel arguments in that file. The
+launcher validates the provider id from this catalog and only stops the PID it
+recorded for the configured executable.

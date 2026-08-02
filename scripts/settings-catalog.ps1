@@ -36,7 +36,7 @@ function New-SettingsCatalog {
          RCON_ENABLED = "network"; RCON_PORT = "network"; REST_API_ENABLED = "network"
          REST_API_PORT = "network"; ENABLE_LEGACY_RCON = "network"; NETWORK_MODE = "network"
          TUNNEL_PROVIDER = "network"; TUNNEL_EXECUTABLE = "network"; TUNNEL_ARGUMENTS = "network"
-         TUNNEL_LOCAL_PORT = "network"; TUNNEL_REMOTE_PORT = "network"; USEAUTH = "network"; BAN_LIST_URL = "network"
+         TUNNEL_LOCAL_PORT = "network"; TUNNEL_REMOTE_PORT = "network"; PROJECT_INSTANCE_ID = "runtime"; USEAUTH = "network"; BAN_LIST_URL = "network"
         CROSSPLAY_PLATFORMS = "network"; SERVER_REPLICATE_PAWN_CULL_DISTANCE = "network"
         SERVER_NAME = "basic"; SERVER_DESCRIPTION = "basic"; SERVER_PASSWORD = "basic"
         ADMIN_PASSWORD = "basic"; PLAYERS = "basic"; COOP_PLAYER_MAX_NUM = "basic"
@@ -359,8 +359,19 @@ DISCORD_SUPPRESS_NOTIFICATIONS|false|boolean
     # Management and optional tunnel controls are deliberately kept separate
     # from game settings so the UI can validate the operational contract.
     Add-Setting -Key "ENABLE_LEGACY_RCON" -Default "false" -Source "network" -Type "boolean" -Risk "caution"
+    Add-Setting -Key "PROJECT_INSTANCE_ID" -Default "palworld-server" -Source "runtime" -Type "string" -Risk "caution" `
+        -DescriptionZh "Instance identity for the Docker container and local runtime lock." `
+        -DescriptionEn "Docker container and local runtime-lock identity; use a unique value when running multiple project directories on one host."
+    Add-Setting -Key "WINDOWS_REST_COMPATIBILITY_MODE" -Default "ini-only" -Source "runtime" -Type "choice" -Options @("compat", "ini-only") -Risk "caution" `
+        -DescriptionZh "Windows REST launch compatibility mode." `
+        -DescriptionEn "Use compat to pass the legacy REST launch switch required by some Windows server builds; use ini-only only after verifying the build."
     Add-Setting -Key "NETWORK_MODE" -Default "direct" -Source "network" -Type "choice" -Options @("direct", "community", "tunnel")
-    Add-Setting -Key "TUNNEL_PROVIDER" -Default "none" -Source "network" -Type "choice" -Options @("none", "generic-process", "sakurafrp")
+    $providerCatalogScript = Join-Path $PSScriptRoot 'tunnel-provider-catalog.ps1'
+    if (-not (Get-Command Get-TunnelProviderIds -ErrorAction SilentlyContinue) -and (Test-Path -LiteralPath $providerCatalogScript -PathType Leaf)) {
+        . $providerCatalogScript
+    }
+    $providerOptions = @(Get-TunnelProviderIds -ProjectDirectory (Split-Path -Parent $PSScriptRoot))
+    Add-Setting -Key "TUNNEL_PROVIDER" -Default "none" -Source "network" -Type "choice" -Options $providerOptions
     Add-Setting -Key "TUNNEL_EXECUTABLE" -Default "" -Source "network" -Type "string" -DependsOn "TUNNEL_PROVIDER!=none"
     Add-Setting -Key "TUNNEL_ARGUMENTS" -Default "" -Source "network" -Type "secret" -Secret $true -DependsOn "TUNNEL_PROVIDER!=none"
     Add-Setting -Key "TUNNEL_LOCAL_PORT" -Default "8211" -Source "network" -Type "integer" -DependsOn "NETWORK_MODE=tunnel"

@@ -40,6 +40,7 @@ try {
     Assert-RuntimeCommonBehavior (Test-Path -LiteralPath $sourceScript -PathType Leaf) 'runtime-common.ps1 is missing.'
     New-Item -ItemType Directory -Path $copiedScriptsDir -Force | Out-Null
     Copy-Item -LiteralPath $sourceScript -Destination $copiedCommon -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'management-api.ps1') -Destination (Join-Path $copiedScriptsDir 'management-api.ps1') -Force
 
     # Seed state before dot-sourcing so runtime-common's bootstrap path has no
     # reason to inspect Docker. Every write below remains under testRoot.

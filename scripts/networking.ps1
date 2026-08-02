@@ -1,5 +1,9 @@
 # Network mode validation shared by onboarding and the Web Console.
 
+if (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'tunnel-provider-catalog.ps1') -PathType Leaf) {
+    . (Join-Path $PSScriptRoot 'tunnel-provider-catalog.ps1')
+}
+
 function Get-NetworkModeContract {
     param([Parameter(Mandatory)][string]$Mode)
     switch ($Mode.ToLowerInvariant()) {
@@ -40,6 +44,8 @@ function Test-NetworkConfiguration {
     $contract = Get-NetworkModeContract -Mode $mode
     $errors = @()
     $provider = if ($Environment.ContainsKey('TUNNEL_PROVIDER') -and $Environment['TUNNEL_PROVIDER']) { [string]$Environment['TUNNEL_PROVIDER'] } else { 'none' }
+    $providerIds = @(Get-TunnelProviderIds -ProjectDirectory (Split-Path -Parent $PSScriptRoot))
+    if ($provider -notin $providerIds) { $errors += "Unsupported TUNNEL_PROVIDER: $provider." }
     if ($mode -eq 'tunnel' -and $provider -eq 'none') { $errors += 'NETWORK_MODE=tunnel requires an explicit TUNNEL_PROVIDER.' }
     if ($mode -ne 'tunnel' -and $provider -ne 'none') { $errors += 'TUNNEL_PROVIDER must be none unless NETWORK_MODE=tunnel.' }
     if ($mode -eq 'community') {

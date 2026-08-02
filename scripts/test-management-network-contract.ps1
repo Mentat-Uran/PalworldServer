@@ -20,7 +20,27 @@ $environment = @{
 $config = Get-ManagementEndpointConfig -ProjectDirectory $projectDir -Environment $environment
 Assert-Contract ([bool]$config.restEnabled) 'REST must be enabled by the neutral management contract.'
 Assert-Contract ([string]$config.restBaseUrl -eq 'http://127.0.0.1:8212/v1/api') 'REST must remain loopback-bound.'
+Assert-Contract ([string]$config.containerName -eq 'palworld-server') 'Default container identity must remain backward compatible.'
+Assert-Contract ([string]$config.windowsRestCompatibilityMode -eq 'ini-only') 'Windows REST must default to the documented INI-only mode.'
 Assert-Contract (-not [bool]$config.legacyRconEnabled) 'Legacy RCON must remain disabled by default.'
+
+$isolatedEnvironment = $environment.Clone()
+$isolatedEnvironment.PROJECT_INSTANCE_ID = 'palworld-family-a'
+$isolatedConfig = Get-ManagementEndpointConfig -ProjectDirectory $projectDir -Environment $isolatedEnvironment
+Assert-Contract ([string]$isolatedConfig.containerName -eq 'palworld-family-a') 'Configured instance identity must be used by the management contract.'
+Assert-Contract ([string](Get-ManagementMutexName -ProjectDirectory $projectDir -Environment $isolatedEnvironment) -eq 'Global\PalworldServerRuntime_palworld-family-a') 'Runtime mutex must be scoped to the configured instance.'
+
+$invalidInstance = $environment.Clone()
+$invalidInstance.PROJECT_INSTANCE_ID = 'Not Safe/For Docker'
+$invalidRejected = $false
+try { [void](Get-ManagementEndpointConfig -ProjectDirectory $projectDir -Environment $invalidInstance) } catch { $invalidRejected = $true }
+Assert-Contract $invalidRejected 'Unsafe instance identities must be rejected.'
+
+$invalidRestMode = $environment.Clone()
+$invalidRestMode.WINDOWS_REST_COMPATIBILITY_MODE = 'unknown'
+$invalidRestModeRejected = $false
+try { [void](Get-ManagementEndpointConfig -ProjectDirectory $projectDir -Environment $invalidRestMode) } catch { $invalidRestModeRejected = $true }
+Assert-Contract $invalidRestModeRejected 'Unknown Windows REST compatibility modes must be rejected.'
 
 $direct = Test-NetworkConfiguration -Environment $environment
 Assert-Contract ([bool]$direct.ok) 'Direct mode should pass with the neutral defaults.'

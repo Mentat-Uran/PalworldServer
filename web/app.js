@@ -1330,10 +1330,10 @@ async function refreshPlayerTimes() {
 
 function dashboardWarningText(message) {
   if (currentLang !== 'zh') return message;
-  if (/SakuraFrp is running, but a newer data-connection error/.test(message)) {
-    return 'SakuraFrp 隧道已经启动，但服务日志中存在更新的数据连接错误。';
+  if (/is running, but a newer data-connection error/.test(message)) {
+    return '隧道 Provider 已经启动，但服务日志中存在更新的数据连接错误。';
   }
-  if (/SakuraFrp is not ready:/.test(message)) {
+  if (/is not ready:/.test(message)) {
     const state = message.split(':').slice(1).join(':').trim().replace(/\.$/, '');
     const labels = {
       absent: '未检测到客户端',
@@ -1344,7 +1344,7 @@ function dashboardWarningText(message) {
       degraded: '隧道数据连接异常',
       verified: '外部数据连接已验证'
     };
-    return `SakuraFrp 尚未就绪：${labels[state] || state}。`;
+    return `隧道 Provider 尚未就绪：${labels[state] || state}。`;
   }
   if (/Container is not fully running/.test(message)) return '容器尚未完全运行。';
   if (/Container health is/.test(message)) return `容器健康状态异常：${message.replace(/^.*? is /, '')}`;
@@ -1980,8 +1980,8 @@ const LOG_EXPLANATIONS = {
     playerJoined:'检测到玩家加入或登录记录。',
     playerLeft:'检测到玩家离开或断线记录。',
     deprecated:'正在使用已弃用功能；当前可能可用，但后续版本可能移除。',
-    tunnelIoTimeout:'SakuraFrp 建立新的数据连接时超时：控制连接和隧道配置可能仍正常，但这次转发没有建立成功。',
-    tunnelConnectionFailed:'SakuraFrp 的节点、控制连接或本地服务转发失败。',
+    tunnelIoTimeout:'隧道 Provider 建立新的数据连接时超时：控制连接和隧道配置可能仍正常，但这次转发没有建立成功。',
+    tunnelConnectionFailed:'隧道 Provider 的节点、控制连接或本地服务转发失败。',
     serverCrash:'检测到崩溃、致命错误或未处理异常。',
     genericError:'检测到错误关键词，但规则无法进一步确定原因；需要结合前后日志判断。',
     genericWarning:'检测到警告关键词；不一定影响运行，但应结合重复频率判断。'
@@ -2004,8 +2004,8 @@ const LOG_EXPLANATIONS = {
     playerJoined:'A player join or login event was detected.',
     playerLeft:'A player leave or disconnect event was detected.',
     deprecated:'A deprecated feature is in use.',
-    tunnelIoTimeout:'SakuraFrp timed out while opening a new data connection; the proxy can remain configured while this transfer failed.',
-    tunnelConnectionFailed:'A SakuraFrp node, control, or local service connection failed.',
+    tunnelIoTimeout:'The tunnel provider timed out while opening a new data connection; the proxy can remain configured while this transfer failed.',
+    tunnelConnectionFailed:'A tunnel provider node, control connection, or local service connection failed.',
     serverCrash:'A crash, fatal error, or unhandled exception was detected.',
     genericError:'An error keyword was found; inspect surrounding lines for the cause.',
     genericWarning:'A warning keyword was found; impact depends on context.'
@@ -2022,7 +2022,7 @@ const LOG_ACTIONS = {
     checkDependency:'确认目标服务正在运行且地址、协议和端口一致。',
     checkNetwork:'检查本机网络、DNS、Docker 与隧道节点；观察错误是否持续出现。',
     reviewSetting:'在官方文档中确认替代接口或设置。',
-    checkTunnelNode:'先点击“验证隧道”确认本地 UDP 与控制连接；若仍重复超时，切换 SakuraFrp 节点或网络后再测试。',
+    checkTunnelNode:'先点击“验证隧道”确认本地 UDP 与控制连接；若仍重复超时，切换 Provider 节点或网络后再测试。',
     checkCrash:'保护存档并查看异常前 30–50 行，重点检查 OOM、Mod、更新和存档错误。',
     inspectContext:'查看该行前后 20 行；若持续重复，再按具体模块处理。'
   },
@@ -2036,7 +2036,7 @@ const LOG_ACTIONS = {
     checkDependency:'Confirm the target service, address, protocol, and port.',
     checkNetwork:'Check local networking, Docker, DNS, and the tunnel node.',
     reviewSetting:'Review the official replacement for this deprecated feature.',
-    checkTunnelNode:'Verify local UDP and the control connection; if timeouts repeat, change the SakuraFrp node or network.',
+    checkTunnelNode:'Verify local UDP and the control connection; if timeouts repeat, change the provider node or network.',
     checkCrash:'Protect the save and inspect 30–50 lines before the crash.',
     inspectContext:'Inspect roughly 20 surrounding lines before acting.'
   }
@@ -2045,7 +2045,25 @@ const LOG_ACTIONS = {
 function logExplanation(entry) {
   return LOG_EXPLANATIONS[currentLang][entry.code] || LOG_EXPLANATIONS[currentLang].activity;
 }
+function configuredPortAction() {
+  const game = String(envValues.PORT || 8211);
+  const query = String(envValues.QUERY_PORT || 27015);
+  const rest = String(envValues.REST_API_PORT || 8212);
+  const rcon = String(envValues.RCON_PORT || 25575);
+  const restRaw = envValues.REST_API_ENABLED;
+  const legacyRaw = envValues.ENABLE_LEGACY_RCON;
+  const rconRaw = envValues.RCON_ENABLED;
+  const restEnabled = restRaw === undefined || restRaw === null || restRaw === ''
+    ? true : /^(true|1|yes)$/i.test(String(restRaw));
+  const rconEnabled = (rconRaw !== undefined && rconRaw !== null && /^(true|1|yes)$/i.test(String(rconRaw))) ||
+    (legacyRaw !== undefined && legacyRaw !== null && /^(true|1|yes)$/i.test(String(legacyRaw)));
+  if (currentLang === 'zh') {
+    return `核对游戏 UDP ${game}、查询 UDP ${query}、REST TCP ${rest}${restEnabled ? '' : '（已关闭）'}${rconEnabled ? `、RCON TCP ${rcon}` : '；RCON 当前关闭'}，以及 Compose 映射是否一致。`;
+  }
+  return `Check game UDP ${game}, query UDP ${query}, REST TCP ${rest}${restEnabled ? '' : ' (disabled)'}${rconEnabled ? `, and RCON TCP ${rcon}` : '; RCON is disabled'}, plus Compose mappings.`;
+}
 function logAction(entry) {
+  if (entry.actionCode === 'checkPorts') return configuredPortAction();
   return LOG_ACTIONS[currentLang][entry.actionCode] || '';
 }
 
@@ -2536,7 +2554,7 @@ const EXACT_SETTING_MEANING_ZH = {
   REST_API_PORT:'官方 REST API 的 TCP 监听端口，项目只映射到本机。',
   SERVER_REPLICATE_PAWN_CULL_DISTANCE:'服务器向客户端同步帕鲁实体的距离，官方建议 5000–15000。',
   CROSSPLAY_PLATFORMS:'允许连接的平台列表，格式如 (Steam,Xbox,PS5,Mac)。',
-  PORT:'游戏 UDP 监听端口；修改后还要同步 Windows 防火墙和 SakuraFrp 本地目标。',
+  PORT:'游戏 UDP 监听端口；修改后还要同步 Windows 防火墙和已配置 Provider 的本地目标。',
   QUERY_PORT:'Steam 查询协议端口；不用于玩家的实际游戏连接。',
   COMMUNITY:'是否把服务器注册到公共社区服务器列表。',
   USE_BACKUP_SAVE_DATA:'启用 Palworld 自身的存档备份机制；频繁备份会增加磁盘负载。',

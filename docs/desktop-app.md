@@ -64,9 +64,16 @@ user's local application data directory, adds a Start menu shortcut, supports
 normal major-version upgrades, and can be removed from Windows Apps or with
 Windows Installer. Neither package installs a WebView2 Runtime.
 
-The artifacts are currently unsigned. A public release should publish the
-generated SHA-256 sidecars and state that code signing is not configured; do not
-present the package as signed provenance.
+The standalone build command does not sign artifacts. For a formal release,
+use the local release orchestrator with a certificate-backed `SignTool.exe`:
+
+```powershell
+.\scripts\publish-local-release.ps1 -CertificateThumbprint '<40-char thumbprint>'
+```
+
+It signs and verifies the executable and MSI before producing the portable ZIP
+and complete source bundle. SHA-256 sidecars and a release manifest are emitted;
+do not present artifacts as signed unless that local command completed.
 
 Run the resulting executable with an explicit project root when it is installed
 outside the repository:

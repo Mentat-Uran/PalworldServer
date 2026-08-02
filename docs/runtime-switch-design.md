@@ -100,7 +100,7 @@
 - 启动目标 runtime 前必须确认 `active=none` 或与目标一致
 - 任何 Stop 成功后才把 `active=none`，然后才允许 Start 另一个
 - 文件写入使用 `Set-Content -NoNewline` 加临时文件 + `Move-Item` 原子替换
-- 进程级互斥：使用 `New-Object System.Threading.Mutex($false, 'Global\PalworldServerRuntime')` 作为额外保护，避免并发 API 调用产生 race
+- 进程级互斥：使用 `PROJECT_INSTANCE_ID` 派生的 `Global\PalworldServerRuntime_<instance>` 命名 Mutex，避免同一项目的并发 API 调用产生 race，同时允许不同项目目录各自运行
 
 `runtime.state` 字段：
 
@@ -159,7 +159,7 @@
 |---|---|---|
 | 行结束符 | `\n` | `\r\n`（UE 在 Windows 下读取兼容 `\n`，但 `\r\n` 是规范） |
 | 路径分隔符 | 不出现（PalWorldSettings.ini 字段值不使用路径） | 不出现 |
-| `RCONEnabled` | 受 `RCON_ENABLED=true` 控制 | Windows 原生通过命令行 `-rcon -rpc -restapi` 启用，INI 内字段保持 `true` 即可 |
+| `RCONEnabled` | 受 `RCON_ENABLED=true` 控制 | Windows 原生由 INI 控制；RCON 仅在显式启用时使用 |
 
 结论：两份 INI 可共用一份中间结构（PSObject），渲染两遍时只切换行结束符。
 
@@ -425,14 +425,14 @@ install-win-server.ps1 [-Force]
 参考 Palworld 官方文档与 `win-server\PalServer.sh` 的 Linux 启动行：
 
 ```text
-PalServer.exe -port=8211 -queryport=27015 -useperfthreads -NoAsyncLoadingThread -UseMultithreadForLoad -rcon -rpc -restapi
+PalServer.exe -port=<PORT> -queryport=<QUERY_PORT> -logformat=text -log -abslog="<engine-log-path>"
 ```
 
-- `-port=8211`：游戏 UDP 端口，与 Docker 保持一致
-- `-queryport=27015`：服务器查询端口（不对外暴露，仅本机）
-- `-rcon -rpc -restapi`：启用 RCON 与 REST API，与 Docker 等价
-- REST API 端口固定 8212（Windows 服务端硬编码，不接受参数）
-- RCON 端口固定 25575（Windows 服务端硬编码）
+- `-port=<PORT>`：游戏 UDP 端口，来自本地 `.env`，与 Docker 保持一致
+- `-queryport=<QUERY_PORT>`：服务器查询端口，来自本地 `.env`
+- `-logformat=text`：使用本地配置的日志格式；`-log` 和 `-abslog` 用于尽力收集引擎输出
+- 当 `ENABLE_PERF_THREADING_ARGS=true` 时，追加官方的 `-useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS`，并可追加 `-NumberOfWorkerThreadsServer=X`
+- REST 的正式配置仍来自生成的 `PalWorldSettings.ini`；由于当前本地 Windows 构建在仅有 INI 时未打开 8212，默认 `WINDOWS_REST_COMPATIBILITY_MODE=ini-only`。`compat` 只是对旧构建的可选 `-restapi` 探测，当前本地构建即使加上该参数也没有打开 8212。RCON 仍只由 INI 控制，不再添加旧版 `-rcon`/`-rpc` 开关
 
 **REST/RCON 绑定地址**：Windows 服务端默认绑定 `0.0.0.0`，与 Docker 不同。必须通过 Windows 防火墙规则限制为 `127.0.0.1`：
 
@@ -466,35 +466,29 @@ function Get-RuntimeSettings { ... }
 
 ```text
 1. Assert-SaveGamesJunction
-2. 校验 win-server\PalServer.exe 存在
-3. 校验 win-server\Pal\Saved\Config\WindowsServer\PalWorldSettings.ini 存在
-4. 启动 PalServer.exe，使用 System.Diagnostics.Process
-   - WorkingDirectory: win-server\
-   - 重定向 stdout/stderr 到 data\log-sources\windows-server\<date>.log
-   - 记录 PID 到 runtime.state
-5. 等待 REST /health 接口响应（最多 120s，每 2s 轮询）
-6. 健康后更新 runtime.state active=windows、pid、startedAt、version
+2. 校验 `win-server\PalServer.exe` 和 WindowsServer 配置存在
+3. 从本地 `.env` 读取端口和 REST/RCON 开关，生成启动参数
+4. 使用 `System.Diagnostics.Process` 启动 `PalServer.exe`，以 `-abslog` 指向尽力而为的引擎日志；生命周期证据另写入 Windows runtime 日志
+5. 由 `switch-runtime.ps1` 轮询 REST `/info`；当前 Windows 构建若没有 REST，则用已核验的 PalServer 进程树和游戏 UDP 监听判断运行就绪，并在成功后更新 `runtime.state`
 ```
 
 #### 4.4.2 Stop
 
 ```text
-1. 读 runtime.state 获取 PID
-2. 调用 REST /stop（超时 30s）
-3. 若 REST 失败：调用 RCON shutdown
-4. 若 RCON 失败：Stop-Process -Id $pid -Force（最后手段）
-5. 等待进程退出，最多 120s
-6. 校验端口 8211/8212/25575 已释放
-7. 更新 runtime.state active=none
+1. 读取 `runtime.state`，并通过 CIM 精确核验 `PalServer.exe` 与 `PalServer-Win64-Shipping-Cmd.exe` 的完整路径和父子关系
+2. 优先调用 REST `/shutdown`（超时 30s）
+3. REST 不可用时先关闭已核验启动器窗口，再只对已核验的父子进程 PID 执行强制停止
+4. 等待并再次核验整个进程树已退出；发现残留或无法确认身份时返回失败，不报告为成功
+5. 由切换流程校验端口释放并更新 `runtime.state active=none`
 ```
 
 #### 4.4.3 Health
 
-调用 `http://127.0.0.1:8212/v1/api/health`，超时 5s。返回 `healthy` / `degraded` / `unreachable`。
+优先调用本地 REST `/v1/api/info`，超时 5s。`/info` 返回成功时为 `healthy`；若 REST 不可用，则必须同时核验 PalServer 启动器、游戏引擎进程及其拥有的游戏 UDP 监听，才可将运行就绪标记为 `healthy`。这种健康状态不代表管理 API 可用，结果会单独记录 `restAvailable` 与 RCON 回退状态。
 
 #### 4.4.4 Save
 
-优先 `POST http://127.0.0.1:8212/v1/api/save`，超时 30s；失败回退 RCON `Save` 命令。
+优先向本地 REST `/v1/api/save` 发起请求，超时 30s；失败时仅在 `ENABLE_LEGACY_RCON=true` 且本机 RCON 可用时回退到 `Save`。两条路径都失败时，切换流程拒绝停止活动运行时，并记录 `switch-save-failed`。
 
 #### 4.4.5 Players / Version / Settings / Logs
 

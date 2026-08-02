@@ -11,7 +11,7 @@ $presetPath = Join-Path $projectDir "presets\$Preset.env"
 if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) { throw 'Create .env with scripts\bootstrap-first-run.ps1 before applying a preset.' }
 if (-not (Test-Path -LiteralPath $presetPath -PathType Leaf)) { throw "Preset not found: $Preset" }
 
-$protected = @('ADMIN_PASSWORD','SERVER_PASSWORD','PUBLIC_IP','PUBLIC_PORT','PORT','QUERY_PORT','REST_API_PORT','RCON_PORT','NETWORK_MODE','TUNNEL_PROVIDER','TUNNEL_EXECUTABLE','TUNNEL_ARGUMENTS')
+$protected = @('ADMIN_PASSWORD','SERVER_PASSWORD','PUBLIC_IP','PUBLIC_PORT','PORT','QUERY_PORT','REST_API_PORT','RCON_PORT','PROJECT_INSTANCE_ID','WINDOWS_REST_COMPATIBILITY_MODE','NETWORK_MODE','TUNNEL_PROVIDER','TUNNEL_EXECUTABLE','TUNNEL_ARGUMENTS')
 $current = @{}
 $lines = [System.IO.File]::ReadAllLines($envPath)
 foreach ($line in $lines) {
