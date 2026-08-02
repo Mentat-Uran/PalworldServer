@@ -18,7 +18,8 @@ function Assert-ProviderTest {
 
 function Invoke-Provider {
     param([Parameter(Mandatory)][string]$Script, [Parameter(Mandatory)][string[]]$Arguments)
-    $powershell = Join-Path $PSHOME 'powershell.exe'
+    $powershellCommand = Get-Command powershell.exe -ErrorAction SilentlyContinue
+    $powershell = if ($powershellCommand) { $powershellCommand.Source } else { Join-Path $PSHOME 'pwsh.exe' }
     $output = @(& $powershell -NoProfile -ExecutionPolicy Bypass -File $Script @Arguments 2>&1)
     return [pscustomobject]@{
         exitCode = [int]$LASTEXITCODE
