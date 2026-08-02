@@ -17,7 +17,8 @@ function Assert-LaunchConfigTest {
 
 function Invoke-FixtureValidator {
     param([Parameter(Mandatory)][string]$ValidatorPath)
-    $powershell = Join-Path $PSHOME 'powershell.exe'
+    $powershellCommand = Get-Command powershell.exe -ErrorAction SilentlyContinue
+    $powershell = if ($powershellCommand) { $powershellCommand.Source } else { Join-Path $PSHOME 'pwsh.exe' }
     $stdoutPath = Join-Path $fixtureRoot ('.validator-' + [guid]::NewGuid().ToString('N') + '.out')
     $stderrPath = Join-Path $fixtureRoot ('.validator-' + [guid]::NewGuid().ToString('N') + '.err')
     $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $ValidatorPath), '-Summary')
