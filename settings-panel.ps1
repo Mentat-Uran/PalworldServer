@@ -1768,6 +1768,7 @@ function Get-StartupUpdateStatus($envVars, [string]$activeRuntime, $containerSta
 }
 
 function Get-LogArchiveList() {
+    $envVars = Get-EnvVars $envFile
     $archives = @()
     if (Test-Path -LiteralPath $logArchiveDir -PathType Container) {
         Get-ChildItem -LiteralPath $logArchiveDir -Filter "*.txt" -File -ErrorAction SilentlyContinue |

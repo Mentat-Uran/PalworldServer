@@ -68,10 +68,26 @@ function Test-DockerContainerRunning {
 }
 
 function Test-WinServerRunning {
-    $procs = Get-Process -Name 'PalServer' -ErrorAction SilentlyContinue
-    if (-not $procs) { return @{ running = $false } }
-    $p = $procs[0]
-    return @{ running = $true; pid = $p.Id; startedAt = $p.StartTime.ToString('o') }
+    $expectedPath = [System.IO.Path]::GetFullPath((Join-Path $projectDir 'win-server\PalServer.exe'))
+    $procs = @(Get-Process -Name 'PalServer' -ErrorAction SilentlyContinue)
+    foreach ($p in $procs) {
+        $actualPath = $null
+        try { $actualPath = $p.Path } catch { }
+        if (-not $actualPath) {
+            try { $actualPath = $p.MainModule.FileName } catch { }
+        }
+        if (-not $actualPath) { continue }
+
+        try {
+            $actualPath = [System.IO.Path]::GetFullPath($actualPath)
+        } catch {
+            continue
+        }
+        if (-not [System.StringComparer]::OrdinalIgnoreCase.Equals($actualPath, $expectedPath)) { continue }
+
+        return @{ running = $true; pid = $p.Id; startedAt = $p.StartTime.ToString('o') }
+    }
+    return @{ running = $false }
 }
 
 function Test-SaveGamesIntegrity {
