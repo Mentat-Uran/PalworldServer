@@ -69,7 +69,7 @@ $outputRoot = Join-Path $projectDir 'output'
 $desktopPublishDir = Join-Path $outputRoot 'desktop-app\win-x64\Release'
 $desktopZip = Join-Path $outputRoot "desktop-app\PalworldServerConsole-$Version-win-x64-Release.zip"
 $desktopZipSha = "$desktopZip.sha256"
-$desktopMsi = Join-Path $desktopPublishDir "PalworldServerConsole-$Version-win-x64-Release.msi"
+$desktopMsi = Join-Path $outputRoot "desktop-app\PalworldServerConsole-$Version-win-x64-Release.msi"
 
 # These checks are intentionally before any build or signing command.
 Invoke-LocalPowerShellScript (Join-Path $projectDir 'scripts\test-version-consistency.ps1')
